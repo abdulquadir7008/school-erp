@@ -91,7 +91,9 @@ export const schoolService = {
       await classService.seedForNewSchool(tx, created.id);
 
       return created;
-    });
+    },
+    // School creation seeds ~30 rows; allow headroom on slow connections.
+    { timeout: 30000 });
 
     return school;
   },
@@ -403,41 +405,48 @@ export const schoolService = {
 };
 
 export const initializeRoles = async () => {
-  const existing = await prisma.role.findUnique({
-    where: { name: "SUPER_ADMIN" },
-  });
-
-  if (existing) {
-    return;
-  }
-
-  await prisma.$transaction(async (tx) => {
-    for (const roleDef of ROLES) {
-      const role = await tx.role.create({
+  // NOTE: intentionally NOT wrapped in a single interactive transaction.
+  // On free-tier hosting (slow cold starts, pooled/proxied Postgres) a
+  // ~200-statement seed transaction exceeds Prisma's default 5s
+  // interactive-transaction timeout and dies with P2028. Per-row upserts
+  // are slower but survive any connection, and reruns resume safely.
+  for (const roleDef of ROLES) {
+    let role = await prisma.role.findUnique({
+      where: { name: roleDef.name },
+    });
+    if (!role) {
+      role = await prisma.role.create({
         data: {
           name: roleDef.name,
           description: roleDef.description,
           isSystem: true,
         },
       });
+    }
 
-      for (const permission of roleDef.permissions) {
-        let perm = await tx.permission.findUnique({
-          where: { name: permission },
+    for (const permission of roleDef.permissions) {
+      let perm = await prisma.permission.findUnique({
+        where: { name: permission },
+      });
+
+      if (!perm) {
+        const [module, action] = permission.split(".");
+        perm = await prisma.permission.create({
+          data: {
+            name: permission,
+            module,
+            action,
+          },
         });
+      }
 
-        if (!perm) {
-          const [module, action] = permission.split(".");
-          perm = await tx.permission.create({
-            data: {
-              name: permission,
-              module,
-              action,
-            },
-          });
-        }
-
-        await tx.rolePermission.create({
+      const existing = await prisma.rolePermission.findUnique({
+        where: {
+          roleId_permissionId: { roleId: role.id, permissionId: perm.id },
+        },
+      });
+      if (!existing) {
+        await prisma.rolePermission.create({
           data: {
             roleId: role.id,
             permissionId: perm.id,
@@ -445,7 +454,7 @@ export const initializeRoles = async () => {
         });
       }
     }
-  });
+  }
 };
 
 /** Ensures the global super admin from env config exists and carries the

@@ -141,7 +141,10 @@ export const classService = {
         createdClasses,
         createdSections,
       };
-    });
+    },
+    // Generous timeout: 14 classes + sections over a free-tier connection
+    // can exceed Prisma's 5s default interactive-transaction timeout.
+    { timeout: 30000 });
   },
 
   async createClass(
