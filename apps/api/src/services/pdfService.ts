@@ -8,8 +8,9 @@ import {
   roundMoney,
 } from "../utils/fees";
 
+type PDFDoc = InstanceType<typeof PDFDocument>;
+
 const GREEN = "#166534";
-const GREEN_LIGHT = "#dcfce7";
 const SLATE = "#0f172a";
 const SLATE_MUTED = "#64748b";
 const BORDER = "#cbd5e1";
@@ -18,15 +19,9 @@ const ROW_ALT = "#f8fafc";
 const MONEY = (v: number | string) => formatINRPlain(v);
 const DATE = (d?: Date | string | null) => (d ? new Date(d).toLocaleDateString("en-IN") : "—");
 
-const rightText = (doc: PDFKit.PDFDocument, text: string, x: number, y: number, width: number, size = 9, color = SLATE_MUTED) => {
-  doc.font("Helvetica").fontSize(size).fillColor(color).text(text, x, y, { width, align: "right" });
-};
-
-const pad = (n: number | string, len = 2) => String(n).padStart(len, "0");
-
 export class PdfService {
   /** Promisified PDF generation into a Node Buffer. */
-  private toBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
+  private toBuffer(doc: PDFDoc): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       doc.on("data", (c: Buffer) => chunks.push(c));
@@ -35,7 +30,7 @@ export class PdfService {
     });
   }
 
-  private drawHeader(doc: PDFKit.PDFDocument, school: any) {
+  private drawHeader(doc: PDFDoc, school: any) {
     const W = doc.page.width - 2 * 60;
     const y0 = 40;
 
@@ -102,7 +97,7 @@ export class PdfService {
     return 130;
   }
 
-  private drawFooter(doc: PDFKit.PDFDocument, schoolName: string) {
+  private drawFooter(doc: PDFDoc, schoolName: string) {
     const height = doc.page.height - 60;
     doc
       .strokeColor(BORDER)
@@ -123,7 +118,7 @@ export class PdfService {
   }
 
   private drawTable(
-    doc: PDFKit.PDFDocument,
+    doc: PDFDoc,
     opts: {
       headers: string[];
       widths: number[];
@@ -257,7 +252,6 @@ export class PdfService {
     const discount = Number(invoice.discount);
     const fine = Number(invoice.fine);
     const final = roundMoney(total + fine - discount);
-    const balance = invoiceBalance(total, paid, discount, fine);
     const ayLabel = invoice.academicYear
       ? academicYearLabel(invoice.academicYear.startDate, invoice.academicYear.endDate)
       : "";
@@ -442,8 +436,8 @@ export class PdfService {
       y += 12;
       const fRows = invoice.fineHistories.map((h) => [
         DATE(h.createdAt),
-        MONEY(h.previousFine),
-        MONEY(h.newFine),
+        MONEY(Number(h.previousFine)),
+        MONEY(Number(h.newFine)),
         h.reason ? `(n.a.) ${h.reason}` : "Recorded by admin",
       ]);
       y = this.drawTable(doc, {

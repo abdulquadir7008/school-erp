@@ -763,6 +763,7 @@ export const feeService = {
   // OVERDUE REFRESH
   // ================================================================
   async refreshOverdueInvoices(schoolId: string | undefined, isSuperAdmin = false) {
+    if (!schoolId && !isSuperAdmin) throw new TenantError("School context required");
     const where: any = { status: "PENDING", dueDate: { lt: new Date() } };
     if (schoolId) where.schoolId = schoolId;
     const result = await prisma.invoice.updateMany({
@@ -1321,7 +1322,7 @@ export const feeService = {
     return {
       name: school.name,
       email: school.email,
-      phone: school.phone,
+      phone: school.phone ?? undefined,
       address: `${school.address || ""}${school.city ? `, ${school.city}` : ""}${school.state ? `, ${school.state}` : ""}`,
       website: undefined,
       logo: school.logo,
