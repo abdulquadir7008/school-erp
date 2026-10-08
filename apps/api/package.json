@@ -10,6 +10,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:superadmin": "tsx src/scripts/create-super-admin.ts",
     "db:seed:hr": "tsx src/scripts/seed-hr.ts",
     "db:seed:inventory": "tsx src/scripts/seed-inventory.ts",
     "db:studio": "prisma studio",
