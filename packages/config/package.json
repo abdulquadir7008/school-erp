@@ -1,0 +1,9 @@
+{
+  "name": "@schoolsphere/config",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'no build needed'"
+  }
+}

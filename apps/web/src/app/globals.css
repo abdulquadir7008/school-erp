@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-darkest: #092d09;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-inter), system-ui, sans-serif;
+  }
+}
+
+/* ============ RTL (Arabic) support ============ */
+[dir="rtl"] body,
+[dir="rtl"] body button,
+[dir="rtl"] body input,
+[dir="rtl"] body select,
+[dir="rtl"] body textarea {
+  font-family: var(--font-arabic), var(--font-inter), system-ui, sans-serif;
+}
+
+[dir="rtl"] .pl-64 {
+  padding-left: 0;
+  padding-right: 16rem;
+}
+
+[dir="rtl"] .pl-16 {
+  padding-left: 0;
+  padding-right: 4rem;
+}
+
+[dir="rtl"] aside {
+  left: auto;
+  right: 0;
+}
+
+[dir="rtl"] .ml-auto {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400;
+}

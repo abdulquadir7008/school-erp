@@ -1,0 +1,17 @@
+FROM node:20-alpine AS base
+WORKDIR /app
+
+COPY package.json ./
+COPY apps/api/package.json ./apps/api/
+COPY prisma ./prisma/
+
+RUN npm install --workspace=apps/api
+
+COPY apps/api ./apps/api
+COPY tsconfig.base.json ./
+
+RUN npx prisma generate --schema=prisma/schema.prisma
+
+WORKDIR /app/apps/api
+EXPOSE 4000
+CMD ["sh", "-c", "npx prisma db push --schema=/app/prisma/schema.prisma && npx tsx src/index.ts"]
