@@ -448,6 +448,47 @@ export const initializeRoles = async () => {
   });
 };
 
+/** Ensures the global super admin from env config exists and carries the
+ *  configured password. Idempotent — safe to run on every boot. */
+export const ensureSuperAdmin = async (email: string, password: string) => {
+  const normalizedEmail = email.toLowerCase();
+  const role = await prisma.role.findUnique({
+    where: { name: "SUPER_ADMIN" },
+  });
+  if (!role) {
+    throw new Error("SUPER_ADMIN role not found — run initializeRoles() first");
+  }
+
+  const existing = await prisma.user.findFirst({
+    where: { email: normalizedEmail, schoolId: null },
+  });
+
+  if (existing) {
+    const same = await bcrypt.compare(password, existing.passwordHash);
+    if (same) return "unchanged" as const;
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        passwordHash: await bcrypt.hash(password, 10),
+        roleId: role.id,
+        isActive: true,
+      },
+    });
+    return "password-updated" as const;
+  }
+
+  await prisma.user.create({
+    data: {
+      email: normalizedEmail,
+      passwordHash: await bcrypt.hash(password, 10),
+      firstName: "Super",
+      lastName: "Admin",
+      roleId: role.id,
+    },
+  });
+  return "created" as const;
+};
+
 export const createDefaultSubscriptionPlans = async () => {
   const existing = await prisma.subscriptionPlan.findFirst();
   if (existing) {

@@ -17,6 +17,14 @@ export const config = {
     origin: process.env.CORS_ORIGIN || "http://localhost:3000",
   },
 
+  // Global super admin ensured on every boot (created if missing,
+  // password synced if different). Set these on the host (Render env
+  // vars / .env) instead of running seed scripts.
+  superadmin: {
+    email: process.env.SUPERADMIN_EMAIL || "admin@schoolsphere.test",
+    password: process.env.SUPERADMIN_PASSWORD || "Admin@2024",
+  },
+
   redis: {
     url: process.env.REDIS_URL || "redis://localhost:6379",
   },

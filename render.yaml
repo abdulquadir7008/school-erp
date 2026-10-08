@@ -22,6 +22,10 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      - key: SUPERADMIN_EMAIL
+        sync: false
+      - key: SUPERADMIN_PASSWORD
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: CORS_ORIGIN

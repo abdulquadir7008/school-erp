@@ -23,7 +23,7 @@ import reportRoutes from "./routes/reportRoutes";
 import settingsRoutes from "./routes/settingsRoutes";
 import healthRoutes from "./routes/healthRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
-import { initializeRoles, createDefaultSubscriptionPlans } from "./services/schoolService";
+import { initializeRoles, createDefaultSubscriptionPlans, ensureSuperAdmin } from "./services/schoolService";
 import "./jobs/queue";
 
 const app = express();
@@ -84,6 +84,11 @@ app.use(errorHandler);
 const initialize = async () => {
   await initializeRoles();
   await createDefaultSubscriptionPlans();
+  const result = await ensureSuperAdmin(
+    config.superadmin.email,
+    config.superadmin.password
+  );
+  console.log(`Super admin ensured: ${config.superadmin.email} (${result})`);
 };
 
 const port = config.port;

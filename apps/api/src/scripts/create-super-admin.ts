@@ -10,6 +10,10 @@
  */
 import bcrypt from "bcryptjs";
 import { prisma } from "../config/database";
+import {
+  initializeRoles,
+  createDefaultSubscriptionPlans,
+} from "../services/schoolService";
 
 const email = (process.argv[2] || "admin@schoolsphere.test").toLowerCase();
 const password = process.argv[3] || "Admin@2024";
@@ -19,13 +23,21 @@ async function main() {
     throw new Error("Password must be at least 6 characters");
   }
 
-  const role = await prisma.role.findUnique({
+  let role = await prisma.role.findUnique({
     where: { name: "SUPER_ADMIN" },
   });
   if (!role) {
-    throw new Error(
-      "SUPER_ADMIN role not found. Start the API once against this database so roles initialize, then retry."
-    );
+    // Fresh database (roles are normally created on API boot) —
+    // initialize them here so this script works standalone.
+    console.log("Roles not initialized — initializing roles and plans...");
+    await initializeRoles();
+    await createDefaultSubscriptionPlans();
+    role = await prisma.role.findUnique({
+      where: { name: "SUPER_ADMIN" },
+    });
+  }
+  if (!role) {
+    throw new Error("Failed to initialize SUPER_ADMIN role.");
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
