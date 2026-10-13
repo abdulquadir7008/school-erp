@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { mobileApi } from "../../src/api/mobile";
 import { useExams, useTeacherStudents } from "../../src/api/hooks";
 import { getApiErrorMessage } from "../../src/api/client";
-import { Card, EmptyView, LoadingView, Pill, Screen, SectionTitle, statusTone } from "../../src/components/ui";
+import { Avatar, Card, EmptyView, LoadingView, Pill, Screen, SectionHeader, statusTone } from "../../src/components/ui";
 
 export default function TeacherExams() {
   const queryClient = useQueryClient();
@@ -34,7 +36,6 @@ export default function TeacherExams() {
       }
       setMarks(preset);
     } catch (e) {
-      // Results may be empty before marks exist — fall back to roster entry mode.
       setResults({ exam, students: [] });
       setMsg("No marks yet — enter below and submit.");
     } finally {
@@ -73,13 +74,9 @@ export default function TeacherExams() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await mobileApi.enterMarks(examId, {
-        examSubjectId,
-        marks: payload,
-      });
-      setMsg(`Saved ${r.data?.updated ?? payload.length} marks for verification ✓`);
+      const r = await mobileApi.enterMarks(examId, { examSubjectId, marks: payload });
+      setMsg(`Saved ${r.data?.updated ?? payload.length} marks for verification`);
       queryClient.invalidateQueries({ queryKey: ["mobile"] });
-      // Re-fetch to show saved values.
       try {
         const fresh = await mobileApi.examResults(examId);
         setResults(fresh);
@@ -104,90 +101,88 @@ export default function TeacherExams() {
   const activeExam = (exams.data || []).find((e: any) => e.id === examId);
 
   return (
-    <Screen refreshing={exams.isFetching} onRefresh={() => exams.refetch()}>
-      <SectionTitle>Examinations (enter marks before verification)</SectionTitle>
-      <Text className="mb-2 text-xs text-slate-500">
-        Only SCHEDULED / IN_PROGRESS exams accept marks. Publishing is done by authorized
-        staff from the web dashboard.
-      </Text>
-      {!(exams.data || []).length ? (
-        <EmptyView title="No examinations" />
-      ) : (
-        <View className="gap-2">
-          {(exams.data || []).map((e: any) => (
-            <Pressable key={e.id} onPress={() => openExam(e.id)}>
-              <Card>
-                <View className="flex-row items-center justify-between">
-                  <Text className="font-semibold text-slate-900">{e.name}</Text>
-                  <Pill text={e.status} tone={statusTone(e.status)} />
-                </View>
-                <Text className="text-xs text-slate-500">
-                  {new Date(e.startDate).toLocaleDateString()} · Tap to enter marks
-                </Text>
-              </Card>
-            </Pressable>
-          ))}
+    <SafeAreaView className="flex-1 bg-canvas" edges={["top"]}>
+      <Screen refreshing={exams.isFetching} onRefresh={() => exams.refetch()}>
+        <SectionHeader title="Exams & marks" subtitle="Enter before verification" />
+        <View className="mb-1 flex-row items-start gap-2 rounded-[20px] bg-amber-50 p-3.5">
+          <Ionicons name="information-circle-outline" size={18} color="#B45309" />
+          <Text className="flex-1 text-[12px] leading-5 text-amber-900">
+            Only SCHEDULED / IN_PROGRESS exams accept marks. Publishing happens on the web dashboard.
+          </Text>
         </View>
-      )}
-
-      {!!examId && (
-        <>
-          <SectionTitle>Marks — {results?.exam?.name || activeExam?.name}</SectionTitle>
-          {!!activeExam?.subjects?.length && (
-            <View className="mb-2 flex-row flex-wrap gap-2">
-              {activeExam.subjects.map((s: any) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => setExamSubjectId(s.id)}
-                  className={`rounded-full px-3 py-1.5 ${examSubjectId === s.id ? "bg-sidebar" : "bg-white"}`}
-                >
-                  <Text className={`text-xs font-semibold ${examSubjectId === s.id ? "text-white" : "text-slate-600"}`}>
-                    {s.subject?.name} (max {s.maxMarks})
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-          {!!msg && <Text className="mb-2 text-sm text-slate-600">{msg}</Text>}
-          <View className="gap-2">
-            {((students.data?.length ? students.data : results?.students) || [])
-              .slice(0, 100)
-              .map((s: any) => (
-                <Card key={s.id}>
-                  <View className="flex-row items-center justify-between">
+        {!(exams.data || []).length ? (
+          <EmptyView title="No examinations" icon="document-text-outline" />
+        ) : (
+          <View className="gap-2.5">
+            {(exams.data || []).map((e: any) => (
+              <Pressable key={e.id} onPress={() => openExam(e.id)}>
+                <Card className={examId === e.id ? "border-tealbrand-600 bg-teal-50/50" : ""}>
+                  <View className="flex-row items-center gap-3">
+                    <View className="h-11 w-11 items-center justify-center rounded-2xl bg-violet-50">
+                      <Ionicons name="document-text" size={20} color="#7C3AED" />
+                    </View>
                     <View className="flex-1">
-                      <Text className="font-semibold text-slate-900">
-                        {s.firstName} {s.lastName}
-                      </Text>
-                      <Text className="text-xs text-slate-500">{s.admissionNumber}</Text>
+                      <Text className="text-[14px] font-bold text-ink">{e.name}</Text>
+                      <Text className="text-[12px] text-slate-500">{new Date(e.startDate).toLocaleDateString()} · Tap to enter marks</Text>
+                    </View>
+                    <Pill text={e.status} tone={statusTone(e.status)} />
+                  </View>
+                </Card>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {!!examId && (
+          <>
+            <SectionHeader title={`Marks — ${results?.exam?.name || activeExam?.name}`} subtitle={maxMarks != null ? `Max ${maxMarks}` : undefined} />
+            {!!activeExam?.subjects?.length && (
+              <View className="mb-2 flex-row flex-wrap gap-2">
+                {activeExam.subjects.map((s: any) => (
+                  <Pressable
+                    key={s.id}
+                    onPress={() => setExamSubjectId(s.id)}
+                    className={`rounded-full px-3.5 py-2 ${examSubjectId === s.id ? "bg-ink" : "border border-slate-200 bg-white"}`}
+                  >
+                    <Text className={`text-[12px] font-bold ${examSubjectId === s.id ? "text-white" : "text-slate-600"}`}>
+                      {s.subject?.name} · {s.maxMarks}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            {!!msg && (
+              <View className="mb-2.5 rounded-2xl bg-slate-100 p-3">
+                <Text className="text-[13px] font-semibold text-slate-700">{msg}</Text>
+              </View>
+            )}
+            <View className="gap-2">
+              {((students.data?.length ? students.data : results?.students) || []).slice(0, 100).map((s: any) => (
+                <Card key={s.id}>
+                  <View className="flex-row items-center gap-3">
+                    <Avatar name={`${s.firstName} ${s.lastName}`} size={38} bg="#0D9488" />
+                    <View className="flex-1">
+                      <Text className="text-[14px] font-bold text-ink">{s.firstName} {s.lastName}</Text>
+                      <Text className="text-[12px] text-slate-500">{s.admissionNumber}</Text>
                     </View>
                     <TextInput
-                      className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-center"
+                      className="w-[72px] rounded-xl bg-slate-50 px-2 py-2.5 text-center text-[15px] font-bold text-ink"
                       keyboardType="numeric"
                       placeholder="—"
+                      placeholderTextColor="#94A3B8"
                       value={marks[s.id] || ""}
                       onChangeText={(v) => setMarks((p) => ({ ...p, [s.id]: v }))}
                     />
                   </View>
                 </Card>
               ))}
-          </View>
-          <Pressable
-            className="mt-3 items-center rounded-xl bg-primary-600 py-4"
-            onPress={submit}
-            disabled={busy}
-          >
-            <Text className="font-bold text-white">
-              {busy ? "Saving…" : "Submit marks for verification"}
-            </Text>
-          </Pressable>
-          <Text className="mt-2 text-xs text-slate-400">
-            Marks follow the exam workflow (DRAFT → … → PUBLISHED). Unpublished results
-            stay invisible to students.
-          </Text>
-        </>
-      )}
-      {busy && !examId && <LoadingView message="Loading results…" />}
-    </Screen>
+            </View>
+            <Pressable className="mt-3.5 items-center rounded-2xl bg-tealbrand-600 py-4 active:opacity-85" onPress={submit} disabled={busy} style={{ opacity: busy ? 0.7 : 1 }}>
+              <Text className="text-[15px] font-extrabold text-white">{busy ? "Saving…" : "Submit for verification"}</Text>
+            </Pressable>
+          </>
+        )}
+      </Screen>
+    </SafeAreaView>
   );
 }

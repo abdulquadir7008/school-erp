@@ -5,27 +5,41 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Keep `primary` name for backward-compat, now indigo-based
         primary: {
-          50: "#eef7ee",
-          100: "#d7ecd7",
-          200: "#b0d9b0",
-          300: "#7fc07f",
-          400: "#4da64d",
-          500: "#2b8a2b",
-          600: "#1a7a1a",
-          700: "#156315",
-          800: "#124f12",
-          900: "#0f4210",
+          50: "#EEF2FF",
+          100: "#E0E7FF",
+          200: "#C7D2FE",
+          300: "#A5B4FC",
+          400: "#818CF8",
+          500: "#6366F1",
+          600: "#4F46E5",
+          700: "#4338CA",
+          800: "#3730A3",
+          900: "#312E81",
         },
         accent: {
           400: "#5c85ff",
           500: "#3366ff",
           600: "#254fd1",
         },
-        sidebar: "#0f172a",
+        sidebar: "#14122B",
+        canvas: "#F4F5FB",
+        ink: "#0F172A",
+        tealbrand: {
+          50: "#ECFDF5",
+          100: "#CCFBF1",
+          500: "#14B8A6",
+          600: "#0D9488",
+          700: "#0F766E",
+          900: "#042F2E",
+        },
       },
       borderRadius: {
-        card: "16px",
+        card: "20px",
+      },
+      boxShadow: {
+        card: "0 8px 24px rgba(15, 23, 42, 0.06)",
       },
     },
   },
