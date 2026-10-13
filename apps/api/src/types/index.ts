@@ -3,6 +3,7 @@ import { Request } from "express";
 export interface AuthUser {
   id: string;
   email: string;
+  username?: string | null;
   firstName: string;
   lastName: string;
   roleId: string;
@@ -11,6 +12,8 @@ export interface AuthUser {
   branchId: string | null;
   permissions: string[];
   isSuperAdmin: boolean;
+  studentId?: string | null;
+  teacherId?: string | null;
 }
 
 export interface AuthRequest extends Request {

@@ -106,6 +106,7 @@ export const en: Messages = {
   "nav.reports": "Reports",
   "nav.settings": "Settings",
   "nav.schools": "Schools",
+  "nav.appLogins": "App Logins",
   "nav.platformAdmin": "Platform Admin",
   "nav.brandName": "SchoolSphere",
   "nav.brandSub": "ERP",

@@ -20,6 +20,7 @@ import {
   BarChart3,
   Settings,
   School,
+  KeyRound,
   ChevronLeft,
 } from "lucide-react";
 import { useState } from "react";
@@ -29,6 +30,7 @@ const navItems = [
   { labelKey: "nav.students", href: "/students", icon: Users },
   { labelKey: "nav.parents", href: "/parents", icon: GraduationCap },
   { labelKey: "nav.teachers", href: "/teachers", icon: BookOpen },
+  { labelKey: "nav.appLogins", href: "/app-logins", icon: KeyRound },
   { labelKey: "nav.academics", href: "/academics", icon: Building2 },
   { labelKey: "nav.attendance", href: "/attendance", icon: CalendarCheck },
   { labelKey: "nav.fees", href: "/fees", icon: Wallet },

@@ -28,6 +28,7 @@ export const attendanceController = {
         date,
         schoolId: getContextSchoolId(req),
         isSuperAdmin: req.user?.isSuperAdmin || false,
+        auth: req.user,
       });
 
       res.json({
@@ -51,6 +52,7 @@ export const attendanceController = {
         schoolId,
         records: req.body.records,
         markedBy: req.user?.id,
+        auth: req.user,
       });
 
       res.json({
@@ -76,6 +78,7 @@ export const attendanceController = {
         date,
         schoolId: getContextSchoolId(req),
         isSuperAdmin: req.user?.isSuperAdmin || false,
+        auth: req.user,
       });
 
       res.json({

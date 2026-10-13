@@ -19,6 +19,8 @@ const buildAuthUser = async (userId: string): Promise<AuthUser> => {
           },
         },
       },
+      studentProfile: { select: { id: true } },
+      teacherProfile: { select: { id: true } },
     },
   });
 
@@ -29,6 +31,7 @@ const buildAuthUser = async (userId: string): Promise<AuthUser> => {
   return {
     id: user.id,
     email: user.email,
+    username: (user as any).username ?? null,
     firstName: user.firstName,
     lastName: user.lastName,
     roleId: user.roleId,
@@ -39,6 +42,8 @@ const buildAuthUser = async (userId: string): Promise<AuthUser> => {
     permissions: user.role.rolePermissions.map(
       (rp) => rp.permission.name
     ),
+    studentId: (user as any).studentProfile?.id ?? null,
+    teacherId: (user as any).teacherProfile?.id ?? null,
   };
 };
 
@@ -107,14 +112,19 @@ export const authService = {
     }
   },
 
-  async login(email: string, password: string) {
+  async login(identifier: string, password: string) {
+    const idLower = identifier.toLowerCase().trim();
+    // Support login via email OR username (mobile login IDs).
+    // If identifier looks like an email use email match, else try both.
     const user = await prisma.user.findFirst({
-      where: { email: email.toLowerCase() },
+      where: {
+        OR: [{ email: idLower }, { username: identifier.trim() }],
+      },
       include: { role: true },
     });
 
     if (!user) {
-      throw new AuthenticationError("Invalid email or password");
+      throw new AuthenticationError("Invalid login credentials");
     }
 
     if (!user.isActive) {
@@ -123,7 +133,7 @@ export const authService = {
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
-      throw new AuthenticationError("Invalid email or password");
+      throw new AuthenticationError("Invalid login credentials");
     }
 
     const authUser = await buildAuthUser(user.id);
@@ -153,10 +163,13 @@ export const authService = {
       user: {
         id: authUser.id,
         email: authUser.email,
+        username: authUser.username,
         firstName: authUser.firstName,
         lastName: authUser.lastName,
         roleName: authUser.roleName,
         schoolId: authUser.schoolId,
+        studentId: authUser.studentId,
+        teacherId: authUser.teacherId,
       },
       ...tokens,
     };
@@ -237,6 +250,13 @@ export const authService = {
             logo: true,
           },
         },
+        studentProfile: {
+          include: {
+            class: { select: { id: true, name: true } },
+            section: { select: { id: true, name: true } },
+          },
+        },
+        teacherProfile: true,
       },
     });
 
@@ -247,6 +267,7 @@ export const authService = {
     return {
       id: user.id,
       email: user.email,
+      username: (user as any).username ?? null,
       firstName: user.firstName,
       lastName: user.lastName,
       phone: user.phone,
@@ -254,6 +275,10 @@ export const authService = {
       role: user.role.name,
       roleId: user.roleId,
       school: user.school,
+      schoolId: user.schoolId,
+      branchId: user.branchId,
+      student: (user as any).studentProfile ?? null,
+      teacher: (user as any).teacherProfile ?? null,
       twoFactorEnabled: user.twoFactorEnabled,
     };
   },

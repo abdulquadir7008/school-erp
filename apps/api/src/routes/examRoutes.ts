@@ -9,6 +9,7 @@ import {
   updateExamSchema,
   updateExamStatusSchema,
 } from "../validators/examValidator";
+import { enterMarksSchema } from "../validators/academicsValidator";
 
 const router = Router();
 
@@ -18,6 +19,12 @@ router.get("/dashboard", authorize(PERMISSIONS.EXAM_VIEW), examController.dashbo
 router.get("/", authorize(PERMISSIONS.EXAM_VIEW), examController.list);
 router.get("/:id", authorize(PERMISSIONS.EXAM_VIEW), examController.getById);
 router.get("/:id/results", authorize(PERMISSIONS.EXAM_RESULTS), examController.getResults);
+router.post(
+  "/:id/marks",
+  authorize(PERMISSIONS.EXAM_MARKS),
+  validate(enterMarksSchema),
+  examController.enterMarks
+);
 router.post(
   "/",
   authorize(PERMISSIONS.EXAM_CREATE),

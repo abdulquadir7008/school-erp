@@ -39,7 +39,8 @@ export const examController = {
       const exam = await examService.getById(
         getParam(req.params.id),
         getContextSchoolId(req),
-        req.user?.isSuperAdmin || false
+        req.user?.isSuperAdmin || false,
+        req.user
       );
       res.json({
         success: true,
@@ -75,7 +76,8 @@ export const examController = {
         getParam(req.params.id),
         getContextSchoolId(req),
         req.body.status,
-        req.user?.isSuperAdmin || false
+        req.user?.isSuperAdmin || false,
+        req.user
       );
       res.json({
         success: true,
@@ -116,6 +118,7 @@ export const examController = {
         status,
         schoolId,
         isSuperAdmin: req.user?.isSuperAdmin || false,
+        auth: req.user,
       });
 
       res.json({
@@ -151,12 +154,30 @@ export const examController = {
       const result = await examService.getResults(
         getParam(req.params.id),
         getContextSchoolId(req),
-        req.user?.isSuperAdmin || false
+        req.user?.isSuperAdmin || false,
+        req.user
       );
       res.json({
         success: true,
         data: result,
         message: "Exam results retrieved",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async enterMarks(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await examService.enterMarks(
+        getParam(req.params.id),
+        req.user!,
+        req.body
+      );
+      res.json({
+        success: true,
+        data: result,
+        message: "Marks saved for verification",
       });
     } catch (error) {
       next(error);

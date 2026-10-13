@@ -106,6 +106,7 @@ export const ar: Messages = {
   "nav.reports": "التقارير",
   "nav.settings": "الإعدادات",
   "nav.schools": "المدارس",
+  "nav.appLogins": "دخول التطبيق",
   "nav.platformAdmin": "مدير المنصة",
   "nav.brandName": "مدرسة سفير",
   "nav.brandSub": "إدارة المدارس",

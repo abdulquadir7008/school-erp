@@ -1,10 +1,33 @@
 import { prisma } from "../config/database";
-import { TenantError } from "../utils/errors";
+import { AuthUser } from "../types";
+import { AuthorizationError, TenantError } from "../utils/errors";
 
 interface AttendanceRecord {
   studentId: string;
   status: "PRESENT" | "ABSENT" | "LATE" | "HALF_DAY" | "LEAVE";
   remarks?: string;
+}
+
+/**
+ * Teachers may only roster/mark classes assigned to them via the timetable.
+ * School admins and other staff bypass this check (school scoping still applies).
+ */
+async function assertTeacherAssigned(auth: AuthUser | undefined, classId: string) {
+  if (!auth || auth.isSuperAdmin || auth.roleName !== "TEACHER") return;
+  const teacherId =
+    auth.teacherId ||
+    (
+      await prisma.teacher.findFirst({
+        where: { email: auth.email, schoolId: auth.schoolId || undefined },
+        select: { id: true },
+      })
+    )?.id;
+  if (!teacherId) throw new AuthorizationError("No linked teacher record");
+  const assigned = await prisma.timetable.findFirst({
+    where: { teacherId, classId },
+    select: { id: true },
+  });
+  if (!assigned) throw new AuthorizationError("Not assigned to this class");
 }
 
 export const attendanceService = {
@@ -14,6 +37,7 @@ export const attendanceService = {
     date?: string;
     schoolId?: string;
     isSuperAdmin?: boolean;
+    auth?: AuthUser;
   }) {
     if (!query.classId) {
       throw new TenantError("Class selection required");
@@ -43,6 +67,9 @@ export const attendanceService = {
     if (!query.isSuperAdmin && query.schoolId && classRecord.schoolId !== query.schoolId) {
       throw new TenantError();
     }
+
+    // Teachers can only pull rosters for their assigned classes.
+    await assertTeacherAssigned(query.auth, query.classId);
 
     const date = query.date ? new Date(query.date) : new Date();
     const start = new Date(date);
@@ -105,6 +132,7 @@ export const attendanceService = {
     classId?: string;
     records: AttendanceRecord[];
     markedBy?: string;
+    auth?: AuthUser;
   }) {
     const date = new Date(data.date);
     const start = new Date(date);
@@ -117,7 +145,7 @@ export const attendanceService = {
 
       const students = await tx.student.findMany({
         where: { id: { in: studentIds } },
-        select: { id: true, schoolId: true, admissionNumber: true },
+        select: { id: true, schoolId: true, classId: true, admissionNumber: true },
       });
 
       const studentSchool = new Map(
@@ -131,6 +159,45 @@ export const attendanceService = {
         }
         if (schoolId !== data.schoolId) {
           throw new TenantError("Student does not belong to this school");
+        }
+      }
+
+      // When a class scope is supplied, every record must belong to it and
+      // teachers must be assigned to it — IDs from the client are not trusted.
+      if (data.classId) {
+        const classRecord = await tx.schoolClass.findUnique({
+          where: { id: data.classId },
+          select: { schoolId: true },
+        });
+        if (!classRecord) throw new TenantError("Class not found");
+        if (classRecord.schoolId !== data.schoolId) throw new TenantError();
+        for (const s of students) {
+          if ((s as any).classId !== data.classId) {
+            throw new TenantError("Student does not belong to this class");
+          }
+        }
+        await assertTeacherAssigned(data.auth, data.classId);
+      } else if (data.auth && !data.auth.isSuperAdmin && data.auth.roleName === "TEACHER") {
+        // Without an explicit class scope, still confine teachers to
+        // students of their assigned classes.
+        const teacherId =
+          data.auth.teacherId ||
+          (
+            await tx.teacher.findFirst({
+              where: { email: data.auth.email, schoolId: data.auth.schoolId || undefined },
+              select: { id: true },
+            })
+          )?.id;
+        if (!teacherId) throw new AuthorizationError("No linked teacher record");
+        const assigned = await tx.timetable.findMany({
+          where: { teacherId },
+          select: { classId: true },
+        });
+        const allowed = new Set(assigned.map((a) => a.classId));
+        for (const s of students) {
+          if (!allowed.has((s as any).classId)) {
+            throw new AuthorizationError("Not assigned to this student's class");
+          }
         }
       }
 
@@ -180,9 +247,21 @@ export const attendanceService = {
     date?: string;
     schoolId?: string;
     isSuperAdmin?: boolean;
+    auth?: AuthUser;
   }) {
     if (!query.schoolId && !query.isSuperAdmin) {
       throw new TenantError("School context required");
+    }
+
+    // Verify class tenancy before scoping by it (no silent cross-school reads).
+    if (query.classId && !query.isSuperAdmin && query.schoolId) {
+      const classRecord = await prisma.schoolClass.findUnique({
+        where: { id: query.classId },
+        select: { schoolId: true },
+      });
+      if (!classRecord) throw new TenantError("Class not found");
+      if (classRecord.schoolId !== query.schoolId) throw new TenantError();
+      await assertTeacherAssigned(query.auth, query.classId);
     }
 
     const date = query.date ? new Date(query.date) : new Date();
@@ -216,11 +295,8 @@ export const attendanceService = {
       where.studentId = { in: classStudents.map((s) => s.id) };
     }
 
-    const scopedWhere = { ...where };
-    delete scopedWhere.schoolId;
-
     const records = await prisma.attendance.findMany({
-      where: query.classId ? scopedWhere : where,
+      where,
       select: { status: true },
     });
 

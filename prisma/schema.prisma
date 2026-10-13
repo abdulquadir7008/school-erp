@@ -50,6 +50,7 @@ model RolePermission {
 model User {
   id              String    @id @default(uuid()) @db.Uuid
   email           String
+  username        String?
   passwordHash    String
   firstName       String
   lastName        String
@@ -71,10 +72,14 @@ model User {
   role            Role        @relation(fields: [roleId], references: [id])
   auditLogs       AuditLog[]
   notifications   Notification[]
+  studentProfile  Student?    @relation("StudentUser")
+  teacherProfile  Teacher?    @relation("TeacherUser")
 
   @@unique([email, schoolId])
+  @@unique([username, schoolId])
   @@index([schoolId])
   @@index([email])
+  @@index([username])
   @@index([roleId])
 }
 
@@ -333,6 +338,8 @@ model Timetable {
 model Student {
   id               String         @id @default(uuid()) @db.Uuid
   admissionNumber  String
+  userId           String?        @unique @db.Uuid
+  user             User?          @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
   studentId        String?
   firstName        String
   middleName       String?
@@ -427,7 +434,8 @@ model StudentParent {
 
 model Teacher {
   id          String   @id @default(uuid()) @db.Uuid
-  userId      String?  @db.Uuid
+  userId      String?  @unique @db.Uuid
+  user        User?    @relation("TeacherUser", fields: [userId], references: [id], onDelete: SetNull)
   employeeId  String
   firstName   String
   lastName    String

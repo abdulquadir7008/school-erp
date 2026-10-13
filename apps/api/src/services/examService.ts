@@ -1,5 +1,11 @@
 import { prisma } from "../config/database";
-import { NotFoundError, TenantError } from "../utils/errors";
+import { AuthUser } from "../types";
+import {
+  AuthorizationError,
+  ConflictError,
+  NotFoundError,
+  TenantError,
+} from "../utils/errors";
 
 interface CreateExamData {
   name: string;
@@ -63,7 +69,7 @@ export const examService = {
     return this.getById(exam.id, data.schoolId, true);
   },
 
-  async getById(id: string, schoolId: string | undefined, isSuperAdmin = false) {
+  async getById(id: string, schoolId: string | undefined, isSuperAdmin = false, auth?: AuthUser) {
     const exam = await prisma.exam.findUnique({
       where: { id },
       include: {
@@ -82,6 +88,14 @@ export const examService = {
 
     if (!isSuperAdmin && schoolId && exam.schoolId !== schoolId) {
       throw new TenantError();
+    }
+
+    // Students/parents may only see scheduled/in-progress/published exams —
+    // DRAFT and unpublished COMPLETED exams stay staff-only.
+    if (!isSuperAdmin && (auth?.roleName === "STUDENT" || auth?.roleName === "PARENT")) {
+      if (exam.status !== "SCHEDULED" && exam.status !== "IN_PROGRESS" && exam.status !== "PUBLISHED") {
+        throw new AuthorizationError("This examination is not available yet");
+      }
     }
 
     return exam;
@@ -148,7 +162,8 @@ export const examService = {
     id: string,
     schoolId: string | undefined,
     status: string,
-    isSuperAdmin = false
+    isSuperAdmin = false,
+    auth?: AuthUser
   ) {
     const exam = await prisma.exam.findUnique({ where: { id } });
     if (!exam) {
@@ -156,6 +171,15 @@ export const examService = {
     }
     if (!isSuperAdmin && schoolId && exam.schoolId !== schoolId) {
       throw new TenantError();
+    }
+
+    // Publishing is privileged: require exam.publish (teachers hold
+    // exam.marks only, so they can enter marks but never publish).
+    if (status === "PUBLISHED" && !isSuperAdmin) {
+      const perms = auth?.permissions || [];
+      if (!perms.includes("exam.publish")) {
+        throw new AuthorizationError("Publishing results requires exam.publish permission");
+      }
     }
 
     return prisma.exam.update({
@@ -202,6 +226,7 @@ export const examService = {
     status?: string;
     schoolId?: string;
     isSuperAdmin?: boolean;
+    auth?: AuthUser;
   }) {
     const page = Math.max(1, query.page || 1);
     const limit = Math.min(100, Math.max(1, query.limit || 25));
@@ -222,7 +247,18 @@ export const examService = {
       ];
     }
 
-    if (query.status) {
+    const VISIBLE_TO_FAMILIES = ["SCHEDULED", "IN_PROGRESS", "PUBLISHED"];
+    if (
+      !query.isSuperAdmin &&
+      (query.auth?.roleName === "STUDENT" || query.auth?.roleName === "PARENT")
+    ) {
+      // Students/parents never list DRAFT or unpublished COMPLETED exams,
+      // even when an explicit ?status= filter is supplied.
+      if (query.status && !VISIBLE_TO_FAMILIES.includes(query.status)) {
+        throw new AuthorizationError("This examination list is not available");
+      }
+      where.status = { in: query.status ? [query.status] : VISIBLE_TO_FAMILIES };
+    } else if (query.status) {
       where.status = query.status;
     }
 
@@ -335,7 +371,8 @@ export const examService = {
   async getResults(
     examId: string,
     schoolId: string | undefined,
-    isSuperAdmin = false
+    isSuperAdmin = false,
+    auth?: AuthUser
   ) {
     const exam = await prisma.exam.findUnique({
       where: { id: examId },
@@ -366,6 +403,17 @@ export const examService = {
 
     if (!isSuperAdmin && schoolId && exam.schoolId !== schoolId) {
       throw new TenantError();
+    }
+
+    // Unpublished marks must never leak: students/parents may only view
+    // PUBLISHED exams (staff with exam.results use this for verification).
+    // The mobile student path uses mobileService.studentResults which is
+    // PUBLISHED-only; this guards direct GET /exams/:id/results access.
+    if (!isSuperAdmin && exam.status !== "PUBLISHED") {
+      const role = auth?.roleName;
+      if (role === "STUDENT" || role === "PARENT" || !role) {
+        throw new AuthorizationError("Results are not published yet");
+      }
     }
 
     const studentMap = new Map<
@@ -456,6 +504,122 @@ export const examService = {
         avgPercentage,
       },
     };
+  },
+
+  /**
+   * Bulk enter / update marks for one exam subject.
+   * Allowed while the exam is DRAFT / SCHEDULED / IN_PROGRESS / COMPLETED —
+   * NEVER after PUBLISHED. Teachers may only submit marks for students in
+   * their own school (and, when the caller is a TEACHER, the per-student
+   * school check below is the enforcement point — IDs from the client are
+   * never trusted).
+   */
+  async enterMarks(
+    examId: string,
+    auth: AuthUser,
+    payload: {
+      examSubjectId: string;
+      marks: { studentId: string; marksObtained: number | null; remarks?: string }[];
+    }
+  ) {
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: { subjects: { where: { id: payload.examSubjectId } } },
+    });
+    if (!exam) throw new NotFoundError("Exam");
+    if (!auth.isSuperAdmin && auth.schoolId && exam.schoolId !== auth.schoolId) {
+      throw new TenantError();
+    }
+    if (exam.status === "PUBLISHED") {
+      throw new ConflictError("Marks are locked — this exam is already published");
+    }
+    const examSubject = exam.subjects[0];
+    if (!examSubject) throw new NotFoundError("Exam subject for this exam");
+
+    if (auth.roleName === "TEACHER") {
+      const teacherId =
+        auth.teacherId ||
+        (
+          await prisma.teacher.findFirst({
+            where: { email: auth.email, schoolId: auth.schoolId || undefined },
+            select: { id: true },
+          })
+        )?.id;
+      if (!teacherId) throw new AuthorizationError("No linked teacher record");
+      // Teacher must teach at least one of the students' classes (via timetable).
+      const assigned = await prisma.timetable.findMany({
+        where: { teacherId },
+        select: { classId: true },
+      });
+      const allowedClasses = new Set(assigned.map((a) => a.classId));
+      if (!allowedClasses.size) throw new AuthorizationError("No classes assigned to this teacher");
+      const targets = await prisma.student.findMany({
+        where: { id: { in: payload.marks.map((m) => m.studentId) } },
+        select: { id: true, classId: true },
+      });
+      for (const t of targets) {
+        if (!allowedClasses.has(t.classId)) {
+          throw new AuthorizationError("Not assigned to this student's class");
+        }
+      }
+    }
+
+    const studentIds = payload.marks.map((m) => m.studentId);
+    const students = await prisma.student.findMany({
+      where: { id: { in: studentIds } },
+      select: { id: true, schoolId: true },
+    });
+    const schoolOf = new Map(students.map((s) => [s.id, s.schoolId]));
+    for (const m of payload.marks) {
+      const sSchool = schoolOf.get(m.studentId);
+      if (!sSchool) throw new NotFoundError(`Student ${m.studentId}`);
+      if (sSchool !== exam.schoolId) {
+        throw new TenantError("Student does not belong to this exam's school");
+      }
+      if (
+        m.marksObtained != null &&
+        (m.marksObtained < 0 || m.marksObtained > examSubject.maxMarks)
+      ) {
+        throw new ConflictError(
+          `Marks must be between 0 and ${examSubject.maxMarks}`
+        );
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      for (const m of payload.marks) {
+        await tx.mark.upsert({
+          where: {
+            examSubjectId_studentId: {
+              examSubjectId: payload.examSubjectId,
+              studentId: m.studentId,
+            },
+          },
+          create: {
+            examSubjectId: payload.examSubjectId,
+            studentId: m.studentId,
+            marksObtained: m.marksObtained,
+            remarks: m.remarks,
+          },
+          update: {
+            marksObtained: m.marksObtained,
+            remarks: m.remarks,
+          },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: auth.id,
+          action: "UPDATE",
+          entity: "MARK",
+          entityId: payload.examSubjectId,
+          schoolId: exam.schoolId,
+          newValue: { examId, count: payload.marks.length },
+        },
+      });
+    });
+
+    return { success: true, updated: payload.marks.length };
   },
 };
 

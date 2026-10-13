@@ -23,6 +23,7 @@ import {
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/components/language-provider";
+import { CredentialDialog } from "@/components/credentials/CredentialDialog";
 
 interface Teacher {
   id: string;
@@ -465,6 +466,12 @@ export default function TeachersPage() {
                     </TableCell>
                     <TableCell className="text-end">
                       <div className="flex justify-end gap-1">
+                        <CredentialDialog
+                          kind="teacher"
+                          recordId={teacher.id}
+                          label={`${teacher.firstName} ${teacher.lastName} (${teacher.employeeId})`}
+                          compact
+                        />
                         <Button
                           variant="ghost"
                           size="icon"

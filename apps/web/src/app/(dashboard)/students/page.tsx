@@ -25,6 +25,7 @@ import {
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/components/language-provider";
+import { CredentialDialog } from "@/components/credentials/CredentialDialog";
 
 interface Student {
   id: string;
@@ -446,6 +447,12 @@ export default function StudentsPage() {
                     </TableCell>
                     <TableCell className="text-end">
                       <div className="flex justify-end gap-1">
+                        <CredentialDialog
+                          kind="student"
+                          recordId={student.id}
+                          label={`${student.firstName} ${student.lastName} (${student.admissionNumber})`}
+                          compact
+                        />
                         <Button variant="ghost" size="icon" onClick={() => startEdit(student)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
