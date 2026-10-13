@@ -31,7 +31,9 @@
 21. [Security](#21-security)
 22. [Current Implementation Status](#22-current-implementation-status)
 23. [Roadmap](#23-roadmap)
-24. [License](#24-license)
+24. [Mobile App — Student & Teacher (`apps/mobile`)](#24-mobile-app--student--teacher-appsmobile)
+25. [App Logins & Credential Provisioning](#25-app-logins--credential-provisioning)
+26. [License](#26-license)
 
 ---
 
@@ -161,6 +163,7 @@ All state changes emit `AuditLog` and standardized responses (see §13).
 | Email / SMS | `nodemailer` SMTP (per-school settings + global), SMS/WhatsApp providers stubbed (simulated `delivered:true`) |
 | Payments | Manual ledger today; `Razorpay/Stripe` keys stored, no SDK webhook yet (abstraction-ready) |
 | Realtime / Docs | `socket.io` + `socket.io-client`, `swagger-jsdoc/ui` installed but not mounted (roadmap) |
+| Mobile | Expo SDK 57 (`expo ~57.0.28`, `expo-router ~57.0.26`), React Native 0.86, NativeWind 4 + Tailwind 3.4, TanStack Query 5.62, Zustand 5, `expo-secure-store`, EAS Build profiles |
 | Testing | Jest + `ts-jest`, Supertest (API), Playwright / RTL planned (web) |
 | DevOps | Docker + Compose (Postgres/Redis/API/Web), Render Blueprint (`render.yaml`), GitHub Actions CI (`lint → test → build`), Nginx-ready |
 
@@ -208,6 +211,11 @@ school-erp/
 │   │       └── lib/{api,i18n} stores/{auth-store} hooks/{use-settings}
 │   └── api/                 # Express REST API
 │       └── src/{routes,controllers,services,validators,middleware,utils,jobs,constants,config}
+│   ├── mobile/              # Expo student & teacher apps (expo-router, see §24)
+│   │   ├── app/login.tsx                # Username-or-email login
+│   │   ├── app/(student)/               # index(Home) academics/ attendance/ results/ profile/ + hidden fees/library/transport/homework/exams/notifications/
+│   │   ├── app/(teacher)/               # index(Home) classes/ attendance(mark) homework(create) profile/ + hidden students/timetable/exams/notifications/
+│   │   └── src/{api(client,mobile,hooks),store(auth),components(ui),theme} + .env (EXPO_PUBLIC_API_URL)
 ├── packages/
 │   ├── types/               # @schoolsphere/types (AuthUser, ApiResponse, RoleName…)
 │   ├── validation/          # @schoolsphere/validation (Zod primitives + student/invoice)
@@ -239,7 +247,7 @@ school-erp/
 
 ## 9. Authentication & RBAC
 
-- `POST /auth/register` always creates `SUPER_ADMIN` (bootstrap only); `POST /auth/login` (`findFirst` by lowercased email, `bcrypt.compare`, `isActive` check, push refresh token, `AuditLog LOGIN`).
+- `POST /auth/register` always creates `SUPER_ADMIN` (bootstrap only); `POST /auth/login` accepts **email OR username** (`{identifier, password}` — email matched lowercased, username trimmed; mobile app logins use the provisioned `stu…/tch…` usernames), `bcrypt.compare`, `isActive` check, push refresh token, `AuditLog LOGIN`.
 - Tokens: access JWT 15m (embeds full `AuthUser{id,email,roleName,schoolId,branchId,permissions,isSuperAdmin}`), refresh 7d stored in `User.refreshTokens[]` with rotation; `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/profile`, `POST /auth/change-password` (clears tokens).
 - `authorize(...perms)` requires **every** permission; `isSuperAdmin` bypass. Frontend `hasPermission()` returns true for `SUPER_ADMIN/SCHOOL_ADMIN`, else checks array — but UI gating is cosmetic; API is authoritative.
 - `constants/permissions.ts`: 60+ `module.action` strings (e.g. `student.view/create/edit/delete`, `fees.collect`, `payroll.process`). Seeded idempotently by `initializeRoles()` + `createDefaultSubscriptionPlans()` + `ensureSuperAdmin()` on every boot.
@@ -281,6 +289,9 @@ Mounted in `src/index.ts` under `API_PREFIX=/api/v1` (`GET /health` public, rest
 | `/inventory` | Items/assets/transactions + dashboard |
 | `/reports` | Aggregates overview/students/attendance/finance/hr/library/transport |
 | `/settings` | SchoolSetting JSON + custom Role CRUD + sendTest email/whatsapp |
+| `/credentials` | Student/teacher login provisioning: list accounts, unprovisioned, provision/reset/disable/unlink, bulk create (see §25) |
+| `/mobile` | Self-scoped student/teacher feeds: me/dashboard/timetable/attendance/homework/exams/results/fees/library/transport/notifications + teacher classes/students (see §24) |
+| `/academics` | Timetable CRUD (`TIMETABLE_VIEW/EDIT`) + homework/assignment create/list (`HOMEWORK_VIEW/CREATE`) — reused by teacher mobile app |
 
 16 Zod validator files + `validate()` middleware; `utils/errors.ts (AppError/Authentication/Authorization/Tenant/NotFound/Conflict)`, `utils/fees.ts (roundMoney, academicYearLabel, feeMonthLabel, due 10th next month, invoiceBalance, resolveInvoiceStatus)`.
 
@@ -315,6 +326,9 @@ Base: `http://localhost:4000/api/v1`. All (except `GET /health`, `POST /auth/log
 | Fees | `GET /fees/dashboard, GET/POST /fees/academic-years, POST /fees/academic-years/:id/current, GET/POST /fees/structures, POST /fees/generate-invoices, GET /fees/invoices?search&status&page, POST /fees/invoices, POST /fees/invoices/:id/payments, POST /fees/invoices/:id/fine, POST /fees/invoices/:id/send-receipt, GET /fees/reports/pending` |
 | Exams/Library/Transport/HR/Inventory | `GET/POST /exams, GET /exams/dashboard, GET /exams/:id/results, POST /exams/:id/publish`, `GET /library/books|issues|dashboard, POST /library/issues`, `GET /transport/my|dashboard|vehicles|drivers|routes|assignments`, `GET /hr/dashboard|employees|departments|leaves|payroll, POST /hr/payroll/generate|pay-all`, `GET /inventory/dashboard|items|assets|transactions` |
 | Reports/Settings | `GET /reports/overview|students|attendance|finance|hr|library|transport`, `GET/PUT /settings?schoolId=, PUT /settings/profile, POST /settings/roles, POST /settings/test-email|test-whatsapp` |
+| Credentials | `GET /credentials?role&search&page, GET /credentials/unprovisioned?kind, GET /credentials/students/:id/status, POST /credentials/students/:id/provision, DELETE /credentials/students/:id/unlink` (same for `teachers/`), `POST /credentials/bulk{kind,ids≤200}, POST /credentials/users/:id/reset-password, PATCH /credentials/users/:id/active` |
+| Mobile | `GET /mobile/me|dashboard|timetable|attendance?month&year|homework|exams|results|fees|library|transport|notifications|announcements, GET /mobile/teacher/dashboard|classes|students?classId&sectionId` |
+| Academics | `GET/POST /academics/timetable, DELETE /academics/timetable/:id, GET/POST /academics/homework|assignments` |
 
 **Envelope:**
 
@@ -398,6 +412,18 @@ npm run dev:web
 - Web: http://localhost:3000
 - API: http://localhost:4000/api/v1/health
 
+### 6. Mobile app (Expo, see §24)
+
+```bash
+# Point the app at your backend (LAN IP for physical devices,
+# 10.0.2.2 is automatic on Android emulator, localhost on iOS sim):
+# apps/mobile/.env → EXPO_PUBLIC_API_URL=http://192.168.1.7:4000/api/v1
+npm run start:clear --workspace=@schoolsphere/mobile
+# or from apps/mobile: npx expo start -c
+```
+
+(`expo-router` is hoisted to the repo root so both `npx expo` and npm scripts resolve. Production builds via `eas build --profile production`.)
+
 ### 5. Build / Lint / Format
 
 ```bash
@@ -441,7 +467,7 @@ docker compose up --build
 
 **Render (free-tier API-only blueprint, `render.yaml`):**
 
-- `runtime:node, plan:free`, `build: npm install --include=dev && prisma generate && npm run build --workspace=apps/api`, `start: prisma db push && node apps/api/dist/index.js`, `healthCheckPath:/api/v1/health`.
+- `runtime:node, plan:free`, `build: npm install --include=dev && prisma generate && npm run build --workspace=apps/api`, `start: prisma db push --accept-data-loss && node apps/api/dist/index.js` (`--accept-data-loss` required because the schema adds unique constraints on `Student.userId`, `Teacher.userId`, `User[username,schoolId]`), `healthCheckPath:/api/v1/health`.
 - `env: NODE_ENV=production, API_PREFIX, REDIS_ENABLED=false, JWT_SECRET/REFRESH_SECRET(generateValue), SUPERADMIN_*, DATABASE_URL (Neon/Supabase), CORS_ORIGIN (Vercel)` — pair with Vercel-hosted `apps/web`.
 
 **CI (`.github/workflows/ci.yml` on `push[main,develop] / PR[main]`):** `lint-and-typecheck (node20, npm ci, eslint, tsc --noEmit api+web)` → `test (postgres:16 + redis:7 services, db:generate, jest)` → `build`.
@@ -487,7 +513,7 @@ Covered per code: login/refresh, `authorize()` matrix, cross-school rejection, s
 
 ## 22. Current Implementation Status
 
-**Solid today:** monorepo wiring, auth + 14 roles + 60 permissions + custom roles, tenant isolation, school provisioning, students/parents/teachers CRUD, classes/sections/subjects/timetable/homework, attendance roster/bulk, full fee ledger + fines + invoice PDFs + simulated receipts, exams/marks/publish, library/transport/HR/inventory CRUD + dashboards, 7 reports + CSV, 9-tab settings + bilingual UI + global search + CI/Docker/Render scaffolds.
+**Solid today:** monorepo wiring, auth (email-or-username login) + 14 roles + 60 permissions + custom roles, tenant isolation, school provisioning, students/parents/teachers CRUD, classes/sections/subjects/timetable/homework, attendance roster/bulk, full fee ledger + fines + invoice PDFs + simulated receipts, exams/marks/publish, library/transport/HR/inventory CRUD + dashboards, 7 reports + CSV, 9-tab settings + bilingual UI + global search, **student/teacher login provisioning + App Logins hub (§25), self-scoped mobile APIs (§24), Expo student & teacher apps with redesigned indigo/teal UI**, CI/Docker/Render scaffolds.
 
 **Stubbed / pending:** live Razorpay/Stripe webhooks, S3 uploads, SMS/WhatsApp providers, Socket.IO realtime, BullMQ consumers beyond email, `exceljs/csv` bulk imports, Swagger UI, `@schoolsphere/*` wiring, E2E suite, `Document/Announcement/Message` dedicated APIs, subscription billing, AI features.
 
@@ -512,6 +538,72 @@ This README describes **code as it is** — not just the roadmap — so deploy/i
 
 ---
 
-## 24. License
+11. ⏳ Live Payment Gateways + S3 Storage + Swagger + Hardened Prod (Nginx/TLS) + E2E
+12. ✅ Mobile Student & Teacher Apps (Expo, self-scoped APIs, provisioned logins — §24/§25); Branch Portal polish, Per-branch analytics ⏳
+
+---
+
+## 24. Mobile App — Student & Teacher (`apps/mobile`)
+
+Expo SDK 57 + expo-router + NativeWind (Tailwind) + TanStack Query + Zustand. Built with `npm run build --workspace` untouched — mobile ships via `eas build --profile production` (`eas.json`).
+
+### 24.1 Auth & session
+
+- `app/login.tsx`: **username or email** + password → `POST /auth/login {identifier, password}` → tokens in `expo-secure-store` → `GET /auth/profile` → Zustand `auth.ts` allows **only `STUDENT`/`TEACHER`** (staff roles get “use the web dashboard”).
+- `app/index.tsx` role router: unauthenticated → `/login`, `TEACHER` → `/(teacher)`, else `/(student)`.
+- 401 auto-refresh via `/auth/refresh`; logout clears tokens locally. `axios timeout 30000`; `getApiErrorMessage()` maps timeouts (“Check connection”) vs offline (“Network error. Pull to retry”).
+
+### 24.2 Student app (indigo theme)
+
+Bottom tabs `Home | Learn | Attendance | Results | Profile` (+ hidden deep screens):
+
+| Screen | What it shows / does (all real API, pull-to-refresh) |
+| ------ | ---------------------------------------------------- |
+| Home (`(student)/index`) | Hero (class/section/admission + attendance bar + fees due), Today/ Homework/Exams stats, today's classes, 6 quick actions, pending homework, announcements, recent published results |
+| Learn (`academics`) | Weekly timetable grouped by day + homework & assignments with due dates |
+| Attendance | Month pager, Present/Absent/Late + % score, read-only history |
+| Results | Published report cards with grade badge (A+…F), % progress bar, per-subject marks |
+| Fees (hidden) | Outstanding-balance hero, paid/invoice counts, invoices with status + payment history |
+| Library (hidden) | Issued books (due/fine) + catalog with availability |
+| Transport (hidden) | Bus hero (reg. no, driver) + route-stop timeline + timings |
+| Exams (hidden) | Schedules with status + per-subject dates |
+| Notices (hidden) | School announcements + personal alerts |
+| Profile | Class/admission chips, change password, logout |
+
+### 24.3 Teacher app (teal theme)
+
+Bottom tabs `Home | Classes | Attendance | Homework | Profile` (+ hidden deep screens):
+
+| Screen | What it shows / does |
+| ------ | -------------------- |
+| Home (`(teacher)/index`) | Hero (employeeId/specialization, class/student counts) + `Mark attendance` / `Post homework` CTAs, today's classes, 6 quick actions, upcoming exams, announcements |
+| Attendance | Pick assigned class → roster with per-student `PRESENT/ABSENT/LATE/HALF_DAY/LEAVE` chips + `All present` → `POST /attendance/bulk` |
+| Homework | Pick class × subject → post homework (`POST /academics/homework`) or assignment (`POST /academics/assignments`) with `YYYY-MM-DD` due date |
+| Exams | Exam list → enter marks per subject (`maxMarks` validated) → `POST /exams/:id/marks` for verification (publishing stays on web) |
+| Classes / Students | Assigned classes grouped (subjects, periods/week) → roster with admission/roll/section |
+| Timetable / Notices / Profile | Week view by day pills; admin + personal feeds; change password + logout |
+
+### 24.4 Design system & states
+
+`src/theme.ts` (indigo brand + student/teal-teacher accents, canvas `#F4F5FB`) + `src/components/ui.tsx` (`HeroCard`, `StatCard`, `QuickAction`, `Avatar`, `Pill/statusTone`, `ProgressBar`, `SkeletonList`, `EmptyView`, `ErrorView` with retry). Every screen: skeleton loading, dashed empty states, offline error card, pull-to-refresh, safe-area aware, Ionicons only (no emoji).
+
+### 24.5 Configuration
+
+`apps/mobile/.env → EXPO_PUBLIC_API_URL` (default `localhost:4000/api/v1`, Android emulator `10.0.2.2:4000`; physical devices need the PC's LAN IP). Point it at Render (`https://<api>.onrender.com/api/v1`) to log in with live-provisioned credentials — a credential created on live does **not** exist on a local DB and vice versa.
+
+---
+
+## 25. App Logins & Credential Provisioning
+
+Gives every student/teacher a mobile-ready login without manual user creation.
+
+- **Provisioning (`credentialService`, `bcrypt 10`):** `POST /credentials/students/:id/provision` (auto `stu<admissionNo>` username) / `teachers/` (auto `tch<employeeId>`), 10-char temp password (upper/lower/digit/symbol guaranteed), `ensureUniqueUsername()` per school, synthetic `@<schoolCode>.schoolsphere.local` email when the record has none; links `student.userId` / `teacher.userId`. Already-linked → returns existing (no silent rotation). Every step writes `AuditLog USER`.
+- **Lifecycle:** `GET …/status` (hasAccount check), `POST /credentials/bulk {kind, ids≤200}` → per-row `{username, tempPassword, error}`, `POST /credentials/users/:id/reset-password` (new temp password, sessions revoked, `SUPER_ADMIN` blocked), `PATCH …/active` (disable clears sessions), `DELETE …/unlink` (unlink + deactivate). `GET /credentials` lists accounts (role/search/paginate); `GET /credentials/unprovisioned?kind=` feeds bulk selection.
+- **Web hub (`app-logins/` + `CredentialDialog`):** top card — STUDENT/TEACHER toggle, search, table (username/name/linked record/status/last login) + reset/disable + 25/page + CSV export; bottom card — bulk-select unprovisioned → one-shot `username/tempPassword` CSV download (passwords shown **once**); per-row key-icon dialog for provision/reset/disable/unlink with copyable credentials.
+- **Schema:** `Student.userId @unique`, `Teacher.userId @unique`, `User[username, schoolId] @unique` (login stays tenant-safe; Render `db push` needs `--accept-data-loss`, see §18).
+
+---
+
+## 26. License
 
 Proprietary — for the SchoolSphere ERP platform. All rights reserved. Contact the platform owner for licensing, SaaS hosting, or on-premise deployment.
