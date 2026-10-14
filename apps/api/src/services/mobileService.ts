@@ -84,7 +84,8 @@ export const mobileService = {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [timetable, attendanceToday, attendanceAll, homework, assignments, exams, announcements, invoices] =
+    const sectionOr: any[] = [{ sectionId: null }, ...(s.sectionId ? [{ sectionId: s.sectionId }] : [])];
+    const [timetable, attendanceToday, attendanceAll, homework, hwSubs, assignmentRows, assignSubs, exams, announcements, invoices] =
       await Promise.all([
         prisma.timetable.findMany({
           where: { classId: s.classId, dayOfWeek: dow },
@@ -100,13 +101,16 @@ export const mobileService = {
         }),
         prisma.attendance.findMany({ where: { studentId: s.id }, select: { status: true } }),
         prisma.homework.findMany({
-          where: { classId: s.classId },
-          orderBy: { dueDate: "asc" }, take: 10,
+          where: { schoolId: s.schoolId, classId: s.classId, status: "PUBLISHED", OR: sectionOr },
+          include: { subject: { select: { id: true, name: true } } },
+          orderBy: { dueDate: "asc" }, take: 50,
         }),
+        prisma.homeworkSubmission.findMany({ where: { studentId: s.id } }),
         prisma.assignment.findMany({
-          where: { classId: s.classId },
-          orderBy: { dueDate: "asc" }, take: 10,
+          where: { schoolId: s.schoolId, classId: s.classId, status: "PUBLISHED", OR: sectionOr },
+          orderBy: { dueDate: "asc" }, take: 50,
         }),
+        prisma.assignmentSubmission.findMany({ where: { studentId: s.id } }),
         prisma.exam.findMany({
           where: { schoolId: s.schoolId, status: { in: ["SCHEDULED", "IN_PROGRESS", "PUBLISHED"] } },
           orderBy: { startDate: "asc" }, take: 5,
@@ -140,6 +144,34 @@ export const mobileService = {
       take: 10,
     });
 
+    // Only work the student still has to do: published, in scope, and not
+    // completed/graded. Completed items must never appear as pending.
+    const hwById = new Map(hwSubs.map((x) => [x.homeworkId, x.status as string]));
+    const now = Date.now();
+    const pendingHomework = homework
+      .filter((h) => (hwById.get(h.id) ?? "PENDING") !== "COMPLETED")
+      .map((h) => {
+        const st = hwById.get(h.id) ?? "PENDING";
+        const overdue = st !== "COMPLETED" && new Date(h.dueDate).getTime() < now;
+        return { ...h, myStatus: overdue && st === "PENDING" ? "OVERDUE" : st, completionStatus: st, isOverdue: overdue };
+      })
+      .slice(0, 10);
+    const assignById = new Map(assignSubs.map((x) => [x.assignmentId, x.status as string]));
+    const ACTION_NEEDED = new Set(["NOT_SUBMITTED", "RETURNED_FOR_REVISION"]);
+    const pendingAssignments = assignmentRows
+      .filter((a) => {
+        const st = assignById.get(a.id) ?? "NOT_SUBMITTED";
+        if (ACTION_NEEDED.has(st)) return true;
+        // Overdue and still ungraded/unsubmitted needs action too.
+        return new Date(a.dueDate).getTime() < now && st !== "GRADED";
+      })
+      .map((a) => {
+        const st = assignById.get(a.id) ?? "NOT_SUBMITTED";
+        const overdue = st !== "GRADED" && new Date(a.dueDate).getTime() < now;
+        return { ...a, myStatus: overdue && st === "NOT_SUBMITTED" ? "OVERDUE" : st, submissionStatus: st, isOverdue: overdue };
+      })
+      .slice(0, 10);
+
     return {
       student: {
         id: s.id, firstName: s.firstName, lastName: s.lastName,
@@ -157,8 +189,8 @@ export const mobileService = {
       },
       upcomingExams: exams,
       recentResults: marks,
-      pendingHomework: homework,
-      pendingAssignments: assignments,
+      pendingHomework,
+      pendingAssignments,
       announcements,
       feesDue: invoices,
     };

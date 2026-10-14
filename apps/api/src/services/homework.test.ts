@@ -11,6 +11,7 @@ import { mobileService } from "./mobileService";
 const HW_ID = "11111111-1111-4111-8111-111111111111";
 const CLASS_ID = "22222222-2222-4222-8222-222222222222";
 const STUDENT_ID = "33333333-3333-4333-8333-333333333333";
+const A_ID = "77777777-7777-4777-8777-777777777777";
 
 function mockAuth(overrides: Partial<AuthUser> = {}): AuthUser {
   return {
@@ -275,5 +276,68 @@ describe("mobileService student homework", () => {
       })
     );
     expect(data.homework[0]).toMatchObject({ myStatus: "COMPLETED", completionStatus: "COMPLETED" });
+  });
+});
+
+describe("mobileService student dashboard pending lists", () => {
+  const dashboardStudent = {
+    id: STUDENT_ID,
+    firstName: "Stu",
+    lastName: "Dent",
+    admissionNumber: "A1",
+    photo: null,
+    classId: CLASS_ID,
+    sectionId: null,
+    schoolId: "school-a",
+    class: { id: CLASS_ID, name: "5" },
+    section: null,
+    school: { id: "school-a", name: "Test", schoolCode: "T1" },
+  };
+
+  function mockDashboardBasics() {
+    spyOn(prisma.student, "findUnique").mockResolvedValue(dashboardStudent as never);
+    spyOn(prisma.timetable, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.attendance, "findFirst").mockResolvedValue(null as never);
+    spyOn(prisma.attendance, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.exam, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.announcement, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.invoice, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.mark, "findMany").mockResolvedValue([] as never);
+  }
+
+  it("excludes completed homework from pendingHomework", async () => {
+    mockDashboardBasics();
+    spyOn(prisma.homework, "findMany").mockResolvedValue([
+      { id: HW_ID, title: "Done HW", dueDate: new Date("2026-12-31") },
+      { id: "55555555-5555-4555-8555-555555555555", title: "Todo HW", dueDate: new Date("2026-12-31") },
+    ] as never);
+    spyOn(prisma.homeworkSubmission, "findMany").mockResolvedValue([
+      { homeworkId: HW_ID, status: "COMPLETED" },
+    ] as never);
+    spyOn(prisma.assignment, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.assignmentSubmission, "findMany").mockResolvedValue([] as never);
+
+    const data = await mobileService.studentDashboard(
+      mockAuth({ roleName: "STUDENT", teacherId: null, studentId: STUDENT_ID })
+    );
+    expect(data.pendingHomework.map((h: any) => h.title)).toEqual(["Todo HW"]);
+  });
+
+  it("excludes graded assignments from pendingAssignments", async () => {
+    mockDashboardBasics();
+    spyOn(prisma.homework, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.homeworkSubmission, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.assignment, "findMany").mockResolvedValue([
+      { id: A_ID, title: "Graded A", dueDate: new Date("2026-12-31") },
+      { id: "66666666-6666-4666-8666-666666666666", title: "Todo A", dueDate: new Date("2026-12-31") },
+    ] as never);
+    spyOn(prisma.assignmentSubmission, "findMany").mockResolvedValue([
+      { assignmentId: A_ID, status: "GRADED" },
+    ] as never);
+
+    const data = await mobileService.studentDashboard(
+      mockAuth({ roleName: "STUDENT", teacherId: null, studentId: STUDENT_ID })
+    );
+    expect(data.pendingAssignments.map((a: any) => a.title)).toEqual(["Todo A"]);
   });
 });
