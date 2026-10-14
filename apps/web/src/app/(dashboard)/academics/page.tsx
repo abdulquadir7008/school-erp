@@ -23,6 +23,7 @@ import { api, getErrorMessage } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/components/language-provider";
 import { ClassesManager } from "@/components/academics/classes-manager";
+import { HomeworkManager } from "@/components/academics/homework-manager";
 
 interface Subject {
   id: string;
@@ -41,7 +42,7 @@ export default function AcademicsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [form, setForm] = useState(emptyForm);
-  const [tab, setTab] = useState<"subjects" | "classes">("subjects");
+  const [tab, setTab] = useState<"subjects" | "classes" | "homework">("subjects");
   const [classSchoolId, setClassSchoolId] = useState("");
   const queryClient = useQueryClient();
   const { t } = useI18n();
@@ -178,7 +179,7 @@ export default function AcademicsPage() {
       </div>
 
       <div className="flex gap-2 border-b border-slate-200">
-        {(["subjects", "classes"] as const).map((key) => (
+        {(["subjects", "classes", "homework"] as const).map((key) => (
           <button
             key={key}
             type="button"
@@ -189,12 +190,49 @@ export default function AcademicsPage() {
                 : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
-            {key === "subjects" ? t("academics.tabSubjects") : t("academics.tabClasses")}
+            {key === "subjects"
+              ? t("academics.tabSubjects")
+              : key === "classes"
+                ? t("academics.tabClasses")
+                : "Homework"}
           </button>
         ))}
       </div>
 
-      {tab === "classes" ? (
+      {tab === "homework" ? (
+        <>
+          {isSuperAdmin && (
+            <Card>
+              <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
+                <label className="text-sm font-medium text-slate-700">
+                  <Building2 className="ms-1 inline h-3.5 w-3.5 text-slate-400" />
+                  {t("academics.school")} *
+                </label>
+                <select
+                  className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm sm:max-w-xs"
+                  value={classSchoolId}
+                  onChange={(e) => setClassSchoolId(e.target.value)}
+                >
+                  <option value="">{t("academics.selectSchool")}</option>
+                  {(schoolsQuery.data || []).map((school: any) => (
+                    <option key={school.id} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
+                </select>
+              </CardContent>
+            </Card>
+          )}
+          {(isSuperAdmin ? classSchoolId : user?.schoolId) ? (
+            <HomeworkManager schoolId={isSuperAdmin ? classSchoolId : user?.schoolId || ""} />
+          ) : (
+            <EmptyState
+              title={t("academics.noClasses")}
+              description={t("academics.selectSchoolFirst")}
+            />
+          )}
+        </>
+      ) : tab === "classes" ? (
         <>
           {isSuperAdmin && (
             <Card>

@@ -133,6 +133,8 @@ model School {
   assets          Asset[]
   inventoryItems  InventoryItem[]
   documents       Document[]
+  homeworks       Homework[]
+  homeworkSubmissions HomeworkSubmission[]
 
   @@index([schoolCode])
   @@index([status])
@@ -212,6 +214,7 @@ model AcademicYear {
   invoices  Invoice[]
   feeStructures FeeStructure[]
   invoiceSequences InvoiceSequence[]
+  homeworks Homework[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -287,6 +290,7 @@ model Section {
   class         SchoolClass     @relation(fields: [classId], references: [id], onDelete: Cascade)
   students      Student[]
   feeStructures FeeStructure[]
+  homeworks     Homework[]
 
   @@unique([classId, name])
   @@index([classId])
@@ -304,6 +308,7 @@ model Subject {
   timetableEntries Timetable[]
   examSubjects     ExamSubject[]
   assignments      Assignment[]
+  homeworks        Homework[]
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -378,6 +383,7 @@ model Student {
   feeStructures    FeeStructure[]
   libraryIssues    LibraryIssue[]
   transportAssignments StudentTransport[]
+  homeworkSubmissions HomeworkSubmission[]
 
   @@unique([schoolId, admissionNumber])
   @@index([schoolId])
@@ -453,6 +459,7 @@ model Teacher {
   school      School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   branch      Branch?    @relation(fields: [branchId], references: [id])
   timetables  Timetable[]
+  homeworks   Homework[]
 
   @@unique([schoolId, employeeId])
   @@index([schoolId])
@@ -943,20 +950,83 @@ model StudentTransport {
 // ============================================
 
 model Homework {
-  id          String   @id @default(uuid()) @db.Uuid
-  title       String
-  description String?
-  classId     String   @db.Uuid
-  subjectId   String?
-  dueDate     DateTime
-  schoolId    String   @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String            @id @default(uuid()) @db.Uuid
+  title          String
+  description    String?
+  classId        String            @db.Uuid
+  sectionId      String?           @db.Uuid
+  subjectId      String?           @db.Uuid
+  teacherId      String?           @db.Uuid
+  academicYearId String?           @db.Uuid
+  homeworkDate   DateTime          @default(now())
+  dueDate        DateTime
+  priority       HomeworkPriority  @default(MEDIUM)
+  status         HomeworkStatus    @default(PUBLISHED)
+  attachments    Json?             @default("[]")
+  createdBy      String?           @db.Uuid
+  schoolId       String            @db.Uuid
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
-  class       SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class        SchoolClass   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section      Section?      @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  subject      Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacher      Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  submissions  HomeworkSubmission[]
 
   @@index([schoolId])
   @@index([classId])
+  @@index([sectionId])
+  @@index([subjectId])
+  @@index([teacherId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([schoolId, classId, sectionId])
+}
+
+enum HomeworkStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum HomeworkPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model HomeworkSubmission {
+  id             String                   @id @default(uuid()) @db.Uuid
+  homeworkId     String                   @db.Uuid
+  studentId      String                   @db.Uuid
+  schoolId       String                   @db.Uuid
+  status         HomeworkSubmissionStatus @default(PENDING)
+  submittedAt    DateTime?
+  submissionText String?
+  attachmentUrl  String?
+  teacherRemark  String?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  homework Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  school   School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([homeworkId, studentId])
+  @@index([schoolId])
+  @@index([homeworkId])
+  @@index([studentId])
+  @@index([status])
+}
+
+enum HomeworkSubmissionStatus {
+  PENDING
+  COMPLETED
+  NOT_SUBMITTED
 }
 
 model Assignment {

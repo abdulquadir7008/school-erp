@@ -205,14 +205,110 @@ export const mobileService = {
   async studentHomework(auth: AuthUser) {
     requireRole(auth, ["STUDENT"]);
     const s = await resolveStudent(auth);
-    const [homework, assignments] = await Promise.all([
-      prisma.homework.findMany({ where: { classId: s.classId }, orderBy: { dueDate: "asc" }, take: 100 }),
+    const hwWhere: any = {
+      schoolId: s.schoolId,
+      classId: s.classId,
+      status: "PUBLISHED",
+      OR: [{ sectionId: null }, ...(s.sectionId ? [{ sectionId: s.sectionId }] : [])],
+    };
+    const [homework, submissions, assignments] = await Promise.all([
+      prisma.homework.findMany({
+        where: hwWhere,
+        orderBy: { dueDate: "asc" },
+        take: 100,
+        include: {
+          subject: { select: { id: true, name: true, code: true } },
+          teacher: { select: { id: true, firstName: true, lastName: true } },
+          class: { select: { id: true, name: true } },
+          section: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.homeworkSubmission.findMany({ where: { studentId: s.id } }),
       prisma.assignment.findMany({
         where: { classId: s.classId }, orderBy: { dueDate: "asc" }, take: 100,
         include: { subject: { select: { id: true, name: true } } },
       }),
     ]);
-    return { homework, assignments };
+    const byHomework = new Map(submissions.map((x) => [x.homeworkId, x]));
+    const now = Date.now();
+    const enriched = homework.map((h) => {
+      const sub = byHomework.get(h.id);
+      const status = (sub?.status as string) ?? "PENDING";
+      const overdue = status !== "COMPLETED" && new Date(h.dueDate).getTime() < now;
+      return {
+        ...h,
+        myStatus: overdue && status === "PENDING" ? "OVERDUE" : status,
+        completionStatus: status,
+        isOverdue: overdue,
+        submission: sub ?? null,
+      };
+    });
+    return { homework: enriched, assignments };
+  },
+
+  async studentSubmitHomework(auth: AuthUser, homeworkId: string, data: { submissionText?: string | null; attachmentUrl?: string | null }) {
+    requireRole(auth, ["STUDENT"]);
+    const s = await resolveStudent(auth);
+    const hw = await prisma.homework.findUnique({ where: { id: homeworkId } });
+    if (!hw) throw new NotFoundError("Homework");
+    if (hw.schoolId !== s.schoolId || hw.classId !== s.classId) {
+      throw new AuthorizationError("Not assigned this homework");
+    }
+    if (hw.sectionId && hw.sectionId !== s.sectionId) {
+      throw new AuthorizationError("Not assigned this homework");
+    }
+    if ((hw as any).status && (hw as any).status !== "PUBLISHED") {
+      throw new AuthorizationError("Homework is not published");
+    }
+    const sub = await prisma.homeworkSubmission.upsert({
+      where: { homeworkId_studentId: { homeworkId, studentId: s.id } },
+      create: {
+        homeworkId, studentId: s.id, schoolId: s.schoolId, status: "COMPLETED",
+        submittedAt: new Date(),
+        submissionText: data.submissionText ?? undefined,
+        attachmentUrl: data.attachmentUrl ?? undefined,
+      },
+      update: {
+        status: "COMPLETED",
+        submittedAt: new Date(),
+        ...(data.submissionText !== undefined ? { submissionText: data.submissionText } : {}),
+        ...(data.attachmentUrl !== undefined ? { attachmentUrl: data.attachmentUrl } : {}),
+      },
+    });
+    return sub;
+  },
+
+  /** Teacher's own homework list with per-homework completion stats. */
+  async teacherHomework(auth: AuthUser) {
+    requireRole(auth, ["TEACHER"]);
+    const t = await resolveTeacher(auth);
+    const [entries, owned] = await Promise.all([
+      prisma.timetable.findMany({ where: { teacherId: t.id }, select: { classId: true } }),
+      prisma.schoolClass.findMany({ where: { classTeacherId: t.id }, select: { id: true } }),
+    ]);
+    const ids = Array.from(new Set([...entries.map((e) => e.classId), ...owned.map((c) => c.id)]));
+    if (!ids.length) return [];
+    const items = await prisma.homework.findMany({
+      where: { schoolId: t.schoolId, classId: { in: ids } },
+      orderBy: { dueDate: "asc" },
+      take: 200,
+      include: {
+        class: { select: { id: true, name: true } },
+        section: { select: { id: true, name: true } },
+        subject: { select: { id: true, name: true } },
+      },
+    });
+    return Promise.all(
+      items.map(async (h) => {
+        const scope: any = { schoolId: h.schoolId, classId: h.classId, status: "ACTIVE" };
+        if ((h as any).sectionId) scope.sectionId = (h as any).sectionId;
+        const [total, completed] = await Promise.all([
+          prisma.student.count({ where: scope }),
+          prisma.homeworkSubmission.count({ where: { homeworkId: h.id, status: "COMPLETED" } }),
+        ]);
+        return { ...h, stats: { total, completed, pending: Math.max(0, total - completed) } };
+      })
+    );
   },
 
   async studentExams(auth: AuthUser) {

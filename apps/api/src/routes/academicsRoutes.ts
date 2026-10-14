@@ -7,6 +7,11 @@ import { PERMISSIONS } from "../constants/permissions";
 import {
   createTimetableSchema,
   createHomeworkSchema,
+  updateHomeworkSchema,
+  homeworkIdParamSchema,
+  updateCompletionsSchema,
+  studentSubmitHomeworkSchema,
+  homeworkRemindersSchema,
   createAssignmentSchema,
 } from "../validators/academicsValidator";
 
@@ -33,6 +38,54 @@ router.post(
   authorize(PERMISSIONS.HOMEWORK_CREATE),
   validate(createHomeworkSchema),
   academicsController.createHomework
+);
+router.get(
+  "/homework/:id",
+  authorize(PERMISSIONS.HOMEWORK_VIEW),
+  validate(homeworkIdParamSchema),
+  academicsController.homeworkDetail
+);
+router.put(
+  "/homework/:id",
+  authorize(PERMISSIONS.HOMEWORK_CREATE),
+  validate(updateHomeworkSchema),
+  academicsController.updateHomework
+);
+router.delete(
+  "/homework/:id",
+  authorize(PERMISSIONS.HOMEWORK_CREATE),
+  validate(homeworkIdParamSchema),
+  academicsController.deleteHomework
+);
+router.post(
+  "/homework/:id/publish",
+  authorize(PERMISSIONS.HOMEWORK_CREATE),
+  validate(homeworkIdParamSchema),
+  academicsController.publishHomework
+);
+router.get(
+  "/homework/:id/completions",
+  authorize(PERMISSIONS.HOMEWORK_VIEW),
+  validate(homeworkIdParamSchema),
+  academicsController.homeworkCompletions
+);
+router.patch(
+  "/homework/:id/completions",
+  authorize(PERMISSIONS.HOMEWORK_CREATE),
+  validate(updateCompletionsSchema),
+  academicsController.updateCompletions
+);
+router.post(
+  "/homework/:id/submit",
+  authorize(PERMISSIONS.HOMEWORK_VIEW),
+  validate(studentSubmitHomeworkSchema),
+  academicsController.submitHomework
+);
+router.post(
+  "/homework/reminders",
+  authorize(PERMISSIONS.HOMEWORK_CREATE),
+  validate(homeworkRemindersSchema),
+  academicsController.homeworkReminders
 );
 
 router.get("/assignments", authorize(PERMISSIONS.HOMEWORK_VIEW), academicsController.assignments);

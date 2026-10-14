@@ -20,6 +20,8 @@ export const qk = {
   announcements: ["mobile", "announcements"],
   teacherClasses: ["mobile", "teacher-classes"],
   teacherStudents: (c?: string, s?: string) => ["mobile", "teacher-students", c, s],
+  teacherHomework: ["mobile", "teacher-homework"],
+  teacherCompletions: (id?: string) => ["mobile", "teacher-completions", id],
 } as const;
 
 export function useMe() {
@@ -86,6 +88,19 @@ export function useAnnouncements() {
 
 export function useTeacherClasses() {
   return useQuery({ queryKey: qk.teacherClasses, queryFn: mobileApi.teacherClasses, staleTime: STALE });
+}
+
+export function useTeacherHomework() {
+  return useQuery({ queryKey: qk.teacherHomework, queryFn: mobileApi.teacherHomework, staleTime: STALE });
+}
+
+export function useTeacherCompletions(homeworkId?: string) {
+  return useQuery({
+    queryKey: qk.teacherCompletions(homeworkId),
+    queryFn: () => mobileApi.teacherCompletions(homeworkId as string),
+    staleTime: STALE,
+    enabled: !!homeworkId,
+  });
 }
 
 export function useTeacherStudents(classId?: string, sectionId?: string) {

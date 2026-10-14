@@ -2,14 +2,17 @@ import { Response, NextFunction } from "express";
 import { AuthRequest } from "../types";
 import { getParam } from "../utils/request";
 import { academicsService } from "../services/academicsService";
+import { notificationService } from "../services/notificationService";
+
+const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 
 export const academicsController = {
   async timetable(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = await academicsService.listTimetable(req.user!, {
-        classId: typeof req.query.classId === "string" ? req.query.classId : undefined,
-        teacherId: typeof req.query.teacherId === "string" ? req.query.teacherId : undefined,
-        schoolId: typeof req.query.schoolId === "string" ? req.query.schoolId : undefined,
+        classId: str(req.query.classId),
+        teacherId: str(req.query.teacherId),
+        schoolId: str(req.query.schoolId),
       });
       res.json({ success: true, data, message: "Timetable retrieved" });
     } catch (e) { next(e); }
@@ -32,9 +35,24 @@ export const academicsController = {
   async homework(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = await academicsService.listHomework(req.user!, {
-        classId: typeof req.query.classId === "string" ? req.query.classId : undefined,
-        schoolId: typeof req.query.schoolId === "string" ? req.query.schoolId : undefined,
+        classId: str(req.query.classId),
+        sectionId: str(req.query.sectionId),
+        subjectId: str(req.query.subjectId),
+        status: str(req.query.status),
+        priority: str(req.query.priority),
+        search: str(req.query.search),
+        from: str(req.query.from),
+        to: str(req.query.to),
+        overdue: str(req.query.overdue),
+        schoolId: str(req.query.schoolId),
       });
+      res.json({ success: true, data, message: "Homework retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async homeworkDetail(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await academicsService.getHomework(req.user!, getParam(req.params.id));
       res.json({ success: true, data, message: "Homework retrieved" });
     } catch (e) { next(e); }
   },
@@ -46,11 +64,75 @@ export const academicsController = {
     } catch (e) { next(e); }
   },
 
+  async updateHomework(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await academicsService.updateHomework(req.user!, getParam(req.params.id), req.body);
+      res.json({ success: true, data, message: "Homework updated" });
+    } catch (e) { next(e); }
+  },
+
+  async deleteHomework(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await academicsService.deleteHomework(req.user!, getParam(req.params.id));
+      res.json({ success: true, data, message: "Homework deleted" });
+    } catch (e) { next(e); }
+  },
+
+  async publishHomework(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await academicsService.publishHomework(req.user!, getParam(req.params.id));
+      res.json({ success: true, data, message: "Homework published" });
+    } catch (e) { next(e); }
+  },
+
+  async homeworkCompletions(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await academicsService.listCompletions(req.user!, getParam(req.params.id), {
+        status: str(req.query.status),
+        search: str(req.query.search),
+      });
+      res.json({ success: true, data, message: "Completion status retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async updateCompletions(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await academicsService.updateCompletions(
+        req.user!,
+        getParam(req.params.id),
+        req.body.updates
+      );
+      res.json({ success: true, data, message: "Completion status updated" });
+    } catch (e) { next(e); }
+  },
+
+  async homeworkReminders(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const schoolId =
+        (typeof req.body?.schoolId === "string" && req.body.schoolId) ||
+        req.user!.schoolId ||
+        undefined;
+      const data = await notificationService.homeworkDueReminders(
+        schoolId,
+        typeof req.body?.hoursAhead === "number" ? req.body.hoursAhead : 48,
+        !!req.user!.isSuperAdmin
+      );
+      res.json({ success: true, data, message: "Due reminders queued" });
+    } catch (e) { next(e); }
+  },
+
+  async submitHomework(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await academicsService.studentSubmit(req.user!, getParam(req.params.id), req.body);
+      res.json({ success: true, data, message: "Homework submitted" });
+    } catch (e) { next(e); }
+  },
+
   async assignments(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = await academicsService.listAssignments(req.user!, {
-        classId: typeof req.query.classId === "string" ? req.query.classId : undefined,
-        schoolId: typeof req.query.schoolId === "string" ? req.query.schoolId : undefined,
+        classId: str(req.query.classId),
+        schoolId: str(req.query.schoolId),
       });
       res.json({ success: true, data, message: "Assignments retrieved" });
     } catch (e) { next(e); }

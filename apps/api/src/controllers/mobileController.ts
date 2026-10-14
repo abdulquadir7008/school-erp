@@ -47,6 +47,21 @@ export const mobileController = {
     } catch (e) { next(e); }
   },
 
+  async submitHomework(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const data = await mobileService.studentSubmitHomework(req.user!, id, req.body ?? {});
+      res.json({ success: true, data, message: "Homework submitted" });
+    } catch (e) { next(e); }
+  },
+
+  async teacherHomework(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await mobileService.teacherHomework(req.user!);
+      res.json({ success: true, data, message: "Homework retrieved" });
+    } catch (e) { next(e); }
+  },
+
   async exams(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data =

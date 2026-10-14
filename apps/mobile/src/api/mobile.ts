@@ -63,6 +63,13 @@ export const mobileApi = {
   teacherClasses: () => get<any[]>("/mobile/teacher/classes"),
   teacherStudents: (classId?: string, sectionId?: string) =>
     get<any[]>("/mobile/teacher/students", { classId, sectionId }),
+  teacherHomework: () => get<any[]>("/mobile/teacher/homework"),
+  teacherCompletions: (id: string) =>
+    get<{ homework: any; students: any[]; stats: any }>(`/mobile/teacher/homework/${id}/completions`),
+  updateTeacherCompletions: (id: string, updates: { studentId: string; status: string; teacherRemark?: string }[]) =>
+    api.patch(`/mobile/teacher/homework/${id}/completions`, { updates }).then((r) => r.data.data),
+  submitHomework: (id: string, payload: { submissionText?: string; attachmentUrl?: string }) =>
+    api.post(`/mobile/homework/${id}/submit`, payload).then((r) => r.data),
   // Reused operational endpoints (backend enforces permissions + tenant scope)
   roster: (classId: string, sectionId?: string, date?: string) =>
     get<{ students: any[] }>("/attendance/roster", { classId, sectionId, date }),

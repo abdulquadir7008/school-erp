@@ -163,6 +163,67 @@ export const notificationService = {
     return { delivery, status: delivery.status };
   },
 
+  /**
+   * Homework due-date reminders (in-app today, push-ready).
+   * Creates one in-app `Notification` per pending student for every PUBLISHED
+   * homework due within `hoursAhead`. Idempotent within a 24h window via the
+   * `homework:<id>:reminder` link. Push delivery is integration-ready only:
+   * wire `pushProvider.send()` to FCM/APNs and flip `pushDelivered` — the API
+   * never claims push was delivered until then.
+   */
+  async homeworkDueReminders(schoolId: string | undefined, hoursAhead = 48, isSuperAdmin = false) {
+    if (!schoolId && !isSuperAdmin) throw new TenantError("School context required");
+    const now = new Date();
+    const horizon = new Date(now.getTime() + hoursAhead * 3600_000);
+    const dueSoon = await prisma.homework.findMany({
+      where: {
+        ...(schoolId ? { schoolId } : {}),
+        status: "PUBLISHED",
+        dueDate: { gte: now, lte: horizon },
+      },
+      select: { id: true, title: true, classId: true, sectionId: true, schoolId: true, dueDate: true },
+      take: 200,
+    });
+    let notified = 0;
+    const details: Array<{ homeworkId: string; notified: number }> = [];
+    for (const hw of dueSoon) {
+      const scope: any = { schoolId: hw.schoolId, classId: hw.classId, status: "ACTIVE" };
+      if ((hw as any).sectionId) scope.sectionId = (hw as any).sectionId;
+      const [students, completed, recent] = await Promise.all([
+        prisma.student.findMany({ where: scope, select: { id: true, userId: true } }),
+        prisma.homeworkSubmission.findMany({
+          where: { homeworkId: hw.id, status: "COMPLETED" },
+          select: { studentId: true },
+        }),
+        prisma.notification.findMany({
+          where: { link: `homework:${hw.id}:reminder`, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } },
+          select: { userId: true },
+        }),
+      ]);
+      const done = new Set(completed.map((c) => c.studentId));
+      const reminded = new Set(recent.map((r) => r.userId));
+      const link = `homework:${hw.id}:reminder`;
+      const rows = students
+        .filter((s) => s.userId && !done.has(s.id) && !reminded.has(s.userId as string))
+        .map((s) => ({
+          userId: s.userId as string,
+          title: `Reminder: "${hw.title}" due ${hw.dueDate.toISOString().slice(0, 10)}`,
+          message: `Homework "${hw.title}" is due on ${hw.dueDate.toISOString().slice(0, 10)}. Submit it before the deadline.`,
+          type: "IN_APP" as const,
+          link,
+          schoolId: hw.schoolId,
+        }));
+      if (rows.length) {
+        const res = await prisma.notification.createMany({ data: rows });
+        notified += res.count;
+        details.push({ homeworkId: hw.id, notified: res.count });
+        // PUSH integration point (not delivered yet):
+        // await pushProvider.sendForUsers(rows.map(r => r.userId), { title, body, data: { homeworkId: hw.id } });
+      }
+    }
+    return { checked: dueSoon.length, notified, details, pushDelivered: false };
+  },
+
   async listDeliveries(invoiceId: string, schoolId: string | undefined, isSuperAdmin = false) {
     if (!schoolId && !isSuperAdmin) throw new TenantError("School context required");
     const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { schoolId: true } });
