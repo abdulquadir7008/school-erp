@@ -92,15 +92,107 @@ export const homeworkRemindersSchema = z.object({
   }),
 });
 
+const assignmentType = z.enum(["INDIVIDUAL", "GROUP", "PROJECT", "PRACTICAL", "RESEARCH"]);
+const assignmentStatus = z.enum(["DRAFT", "PUBLISHED", "CLOSED", "ARCHIVED"]);
+
 export const createAssignmentSchema = z.object({
   body: z.object({
-    title: z.string().min(1).max(200),
-    description: z.string().max(2000).optional(),
+    title: z.string().trim().min(1).max(200),
+    description: z.string().max(5000).optional(),
+    instructions: z.string().max(5000).optional(),
     classId: z.string().uuid(),
+    sectionId: z.string().uuid().optional(),
     subjectId: z.string().uuid().optional(),
-    totalMarks: z.number().int().min(1).max(1000).optional(),
+    academicYearId: z.string().uuid().optional(),
+    type: assignmentType.optional(),
+    assignedDate: z.string().min(1).optional(),
     dueDate: z.string().min(1),
+    lateSubmissionDate: z.string().min(1).optional(),
+    allowLateSubmission: z.boolean().optional(),
+    totalMarks: z.number().int().min(1).max(1000).optional(),
+    passingMarks: z.number().int().min(0).max(1000).optional(),
+    gradingCriteria: z.string().max(5000).optional(),
+    referenceMaterials: z.array(z.string().trim().min(1).max(2000)).max(10).optional(),
+    attachments: z.array(z.string().trim().min(1).max(2000)).max(10).optional(),
+    status: assignmentStatus.optional(),
     schoolId: z.string().uuid().optional(),
+  }),
+});
+
+export const updateAssignmentSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z
+    .object({
+      title: z.string().trim().min(1).max(200).optional(),
+      description: z.string().max(5000).nullable().optional(),
+      instructions: z.string().max(5000).nullable().optional(),
+      sectionId: z.string().uuid().nullable().optional(),
+      subjectId: z.string().uuid().nullable().optional(),
+      academicYearId: z.string().uuid().nullable().optional(),
+      type: assignmentType.optional(),
+      assignedDate: z.string().min(1).optional(),
+      dueDate: z.string().min(1).optional(),
+      lateSubmissionDate: z.string().min(1).nullable().optional(),
+      allowLateSubmission: z.boolean().optional(),
+      totalMarks: z.number().int().min(1).max(1000).nullable().optional(),
+      passingMarks: z.number().int().min(0).max(1000).nullable().optional(),
+      gradingCriteria: z.string().max(5000).nullable().optional(),
+      referenceMaterials: z.array(z.string().trim().min(1).max(2000)).max(10).nullable().optional(),
+      attachments: z.array(z.string().trim().min(1).max(2000)).max(10).nullable().optional(),
+      status: assignmentStatus.optional(),
+    })
+    .refine((b) => Object.keys(b).length > 0, { message: "Nothing to update" }),
+});
+
+export const assignmentIdParamSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+});
+
+const gradeStatus = z.enum(["UNDER_REVIEW", "GRADED", "RETURNED_FOR_REVISION", "NOT_SUBMITTED"]);
+
+export const gradeSubmissionsSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    updates: z
+      .array(
+        z.object({
+          studentId: z.string().uuid(),
+          marksObtained: z.number().int().min(0).max(1000).nullable().optional(),
+          feedback: z.string().max(5000).nullable().optional(),
+          status: gradeStatus.optional(),
+        })
+      )
+      .min(1)
+      .max(200),
+  }),
+});
+
+export const publishGradesSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    studentIds: z.array(z.string().uuid()).max(500).optional(),
+  }),
+});
+
+export const submissionHistorySchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  query: z.object({
+    studentId: z.string().uuid().optional(),
+  }),
+});
+
+export const assignmentRemindersSchema = z.object({
+  body: z.object({
+    hoursAhead: z.number().int().min(1).max(168).optional(),
+    schoolId: z.string().uuid().optional(),
+  }),
+});
+
+export const studentSubmitAssignmentSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    submissionText: z.string().max(10000).nullable().optional(),
+    attachmentIds: z.array(z.string().uuid()).max(5).optional(),
   }),
 });
 

@@ -39,6 +39,9 @@ export const queues = {
   attendanceNotification: connection
     ? new Queue("attendanceNotification", { connection })
     : noopQueue,
+  assignmentReminder: connection
+    ? new Queue("assignmentReminder", { connection })
+    : noopQueue,
   backup: connection ? new Queue("backupDatabase", { connection }) : noopQueue,
 };
 
@@ -89,4 +92,8 @@ if (connection) {
   });
 }
 
-export const queueService = { queues, enqueueEmail, enqueueNotification };
+export const enqueueAssignmentReminders = async (schoolId?: string, hoursAhead = 48) => {
+  await queues.assignmentReminder.add("due", { schoolId, hoursAhead });
+};
+
+export const queueService = { queues, enqueueEmail, enqueueNotification, enqueueAssignmentReminders };

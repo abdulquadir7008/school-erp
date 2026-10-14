@@ -62,6 +62,102 @@ export const mobileController = {
     } catch (e) { next(e); }
   },
 
+  async studentAssignments(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await mobileService.studentAssignments(req.user!);
+      res.json({ success: true, data, message: "Assignments retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async submitAssignment(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const { assignmentService } = await import("../services/assignmentService");
+      const data = await assignmentService.studentSubmit(req.user!, id, req.body ?? {});
+      res.json({ success: true, data, message: "Assignment submitted" });
+    } catch (e) { next(e); }
+  },
+
+  async teacherAssignments(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { assignmentService } = await import("../services/assignmentService");
+      const data = await assignmentService.listAssignments(req.user!, {});
+      res.json({ success: true, data, message: "Assignments retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async teacherSubmissions(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const { assignmentService } = await import("../services/assignmentService");
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const search = typeof req.query.search === "string" ? req.query.search : undefined;
+      const data = await assignmentService.listSubmissions(req.user!, id, { status, search });
+      res.json({ success: true, data, message: "Submissions retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async teacherGrade(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const { assignmentService } = await import("../services/assignmentService");
+      const data = await assignmentService.gradeSubmissions(req.user!, id, req.body.updates);
+      res.json({ success: true, data, message: "Grading saved" });
+    } catch (e) { next(e); }
+  },
+
+  async teacherPublishGrades(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const { assignmentService } = await import("../services/assignmentService");
+      const data = await assignmentService.publishGrades(
+        req.user!,
+        id,
+        Array.isArray(req.body?.studentIds) ? req.body.studentIds : undefined
+      );
+      res.json({ success: true, data, message: "Grades published" });
+    } catch (e) { next(e); }
+  },
+
+  async uploadAssignmentFile(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const file = (req as any).file as
+        | { buffer: Buffer; originalname: string; mimetype: string; size: number }
+        | undefined;
+      if (!file?.buffer?.length) {
+        res.status(400).json({ success: false, message: "No file received", code: "NO_FILE" });
+        return;
+      }
+      const { assignmentService } = await import("../services/assignmentService");
+      const data = await assignmentService.uploadAttachment(req.user!, {
+        buffer: file.buffer,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+      });
+      res.status(201).json({
+        success: true,
+        data: { id: data.id, name: data.name, mimeType: data.type, size: data.size },
+        message: "File uploaded",
+      });
+    } catch (e) { next(e); }
+  },
+
+  async downloadAssignmentFile(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const docId = typeof req.params.docId === "string" ? req.params.docId : "";
+      const { assignmentService } = await import("../services/assignmentService");
+      const resolved = await assignmentService.authorizeAttachment(req.user!, docId);
+      if (resolved.kind === "redirect") {
+        res.redirect(302, resolved.signedUrl);
+        return;
+      }
+      res.setHeader("Content-Type", resolved.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${resolved.fileName.replace(/"/g, "")}"`);
+      res.sendFile(resolved.absPath);
+    } catch (e) { next(e); }
+  },
+
   async exams(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data =

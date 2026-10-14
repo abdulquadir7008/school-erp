@@ -86,6 +86,7 @@ export default function TeacherTabs() {
         }}
       />
       <Tabs.Screen name="students" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="assignments" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="timetable" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="exams" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="notifications" options={{ href: null, headerShown: false }} />

@@ -3,10 +3,14 @@ import { mobileController } from "../controllers/mobileController";
 import { academicsController } from "../controllers/academicsController";
 import { authenticate } from "../middleware/auth";
 import { validate } from "../middleware/errorHandler";
+import { uploadSingle } from "../middleware/upload";
 import {
   homeworkIdParamSchema,
   updateCompletionsSchema,
   studentSubmitHomeworkSchema,
+  assignmentIdParamSchema,
+  gradeSubmissionsSchema,
+  studentSubmitAssignmentSchema,
 } from "../validators/academicsValidator";
 
 const router = Router();
@@ -28,6 +32,18 @@ router.post(
   validate(studentSubmitHomeworkSchema),
   mobileController.submitHomework
 );
+router.get("/assignments", mobileController.studentAssignments);
+router.post(
+  "/assignments/:id/submit",
+  validate(studentSubmitAssignmentSchema),
+  mobileController.submitAssignment
+);
+router.post(
+  "/assignments/attachments",
+  uploadSingle("file"),
+  mobileController.uploadAssignmentFile
+);
+router.get("/assignments/attachments/:docId", mobileController.downloadAssignmentFile);
 router.get("/exams", mobileController.exams);
 router.get("/results", mobileController.results);
 router.get("/fees", mobileController.fees);
@@ -48,6 +64,22 @@ router.patch(
   "/teacher/homework/:id/completions",
   validate(updateCompletionsSchema),
   academicsController.updateCompletions
+);
+router.get("/teacher/assignments", mobileController.teacherAssignments);
+router.get(
+  "/teacher/assignments/:id/submissions",
+  validate(assignmentIdParamSchema),
+  mobileController.teacherSubmissions
+);
+router.patch(
+  "/teacher/assignments/:id/grade",
+  validate(gradeSubmissionsSchema),
+  mobileController.teacherGrade
+);
+router.post(
+  "/teacher/assignments/:id/publish-grades",
+  validate(assignmentIdParamSchema),
+  mobileController.teacherPublishGrades
 );
 
 export default router;

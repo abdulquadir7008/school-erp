@@ -264,6 +264,7 @@ describe("mobileService student homework", () => {
       { homeworkId: HW_ID, status: "COMPLETED" },
     ] as never);
     spyOn(prisma.assignment, "findMany").mockResolvedValue([] as never);
+    spyOn(prisma.assignmentSubmission, "findMany").mockResolvedValue([] as never);
 
     const data = await mobileService.studentHomework(
       mockAuth({ roleName: "STUDENT", teacherId: null, studentId: STUDENT_ID })

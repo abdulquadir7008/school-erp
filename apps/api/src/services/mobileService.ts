@@ -202,6 +202,13 @@ export const mobileService = {
     };
   },
 
+  /** Student assignment feed with own submission, grading visibility, and overdue flags. */
+  async studentAssignments(auth: AuthUser) {
+    requireRole(auth, ["STUDENT"]);
+    const { assignmentService } = await import("./assignmentService");
+    return assignmentService.studentAssignments(auth);
+  },
+
   async studentHomework(auth: AuthUser) {
     requireRole(auth, ["STUDENT"]);
     const s = await resolveStudent(auth);
@@ -211,6 +218,7 @@ export const mobileService = {
       status: "PUBLISHED",
       OR: [{ sectionId: null }, ...(s.sectionId ? [{ sectionId: s.sectionId }] : [])],
     };
+    const { assignmentService } = await import("./assignmentService");
     const [homework, submissions, assignments] = await Promise.all([
       prisma.homework.findMany({
         where: hwWhere,
@@ -224,10 +232,7 @@ export const mobileService = {
         },
       }),
       prisma.homeworkSubmission.findMany({ where: { studentId: s.id } }),
-      prisma.assignment.findMany({
-        where: { classId: s.classId }, orderBy: { dueDate: "asc" }, take: 100,
-        include: { subject: { select: { id: true, name: true } } },
-      }),
+      assignmentService.studentAssignments(auth),
     ]);
     const byHomework = new Map(submissions.map((x) => [x.homeworkId, x]));
     const now = Date.now();

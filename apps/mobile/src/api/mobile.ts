@@ -1,4 +1,6 @@
 import { api, ApiEnvelope } from "./client";
+import * as FileSystem from "expo-file-system/legacy";
+import { getTokens } from "./client";
 
 // Typed wrappers around the SchoolSphere REST API.
 // Mobile-first endpoints live under /mobile/* (strict self-scoping on the backend).
@@ -70,6 +72,39 @@ export const mobileApi = {
     api.patch(`/mobile/teacher/homework/${id}/completions`, { updates }).then((r) => r.data.data),
   submitHomework: (id: string, payload: { submissionText?: string; attachmentUrl?: string }) =>
     api.post(`/mobile/homework/${id}/submit`, payload).then((r) => r.data),
+  // ---- Assignments ----
+  studentAssignments: () => get<any[]>("/mobile/assignments"),
+  submitAssignment: (id: string, payload: { submissionText?: string; attachmentIds?: string[] }) =>
+    api.post(`/mobile/assignments/${id}/submit`, payload).then((r) => r.data),
+  uploadAssignmentFile: async (uri: string, name: string, mimeType: string) => {
+    const form = new FormData();
+    form.append("file", { uri, name, type: mimeType } as any);
+    const res = await api.post("/mobile/assignments/attachments", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data.data as { id: string; name: string; mimeType: string; size: number };
+  },
+  downloadAssignmentFile: async (docId: string, fileName: string) => {
+    const { accessToken } = await getTokens();
+    const base = (api.defaults.baseURL || "").replace(/\/$/, "");
+    const url = `${base}/mobile/assignments/attachments/${docId}`;
+    const target = `${(FileSystem.cacheDirectory || "")}assignment-${docId}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const result = await FileSystem.downloadAsync(url, target, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+    return result.uri;
+  },
+  teacherAssignments: () => get<any[]>("/mobile/teacher/assignments"),
+  teacherSubmissions: (id: string, params?: { status?: string; search?: string }) =>
+    get<{ assignment: any; students: any[]; stats: any }>(`/mobile/teacher/assignments/${id}/submissions`, params as any),
+  gradeAssignment: (id: string, updates: { studentId: string; marksObtained?: number; feedback?: string; status?: string }[]) =>
+    api.patch(`/mobile/teacher/assignments/${id}/grade`, { updates }).then((r) => r.data.data),
+  publishAssignmentGrades: (id: string, studentIds?: string[]) =>
+    api.post(`/mobile/teacher/assignments/${id}/publish-grades`, { studentIds }).then((r) => r.data.data),
+  createFullAssignment: (payload: Record<string, unknown>) =>
+    api.post("/academics/assignments", payload).then((r) => r.data),
+  transitionAssignment: (id: string, action: "publish" | "close" | "reopen" | "archive" | "duplicate") =>
+    api.post(`/academics/assignments/${id}/${action}`).then((r) => r.data),
   // Reused operational endpoints (backend enforces permissions + tenant scope)
   roster: (classId: string, sectionId?: string, date?: string) =>
     get<{ students: any[] }>("/attendance/roster", { classId, sectionId, date }),

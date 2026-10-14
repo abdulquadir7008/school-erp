@@ -37,6 +37,14 @@ export const config = {
     region: process.env.S3_REGION || "ap-south-1",
   },
 
+  storage: {
+    // "local" (default) stores files under STORAGE_DIR on the API host and
+    // serves them through an authenticated endpoint. "s3" uses the S3_*
+    // settings above (private bucket + short-lived signed URLs).
+    driver: process.env.STORAGE_DRIVER || "local",
+    dir: process.env.STORAGE_DIR || "uploads",
+  },
+
   smtp: {
     host: process.env.SMTP_HOST || "",
     port: parseInt(process.env.SMTP_PORT || "587", 10),

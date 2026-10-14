@@ -135,6 +135,8 @@ model School {
   documents       Document[]
   homeworks       Homework[]
   homeworkSubmissions HomeworkSubmission[]
+  assignments   Assignment[]
+  assignmentSubmissions AssignmentSubmission[]
 
   @@index([schoolCode])
   @@index([status])
@@ -215,6 +217,7 @@ model AcademicYear {
   feeStructures FeeStructure[]
   invoiceSequences InvoiceSequence[]
   homeworks Homework[]
+  assignments Assignment[]
 
   @@unique([schoolId, name])
   @@index([schoolId])
@@ -291,6 +294,7 @@ model Section {
   students      Student[]
   feeStructures FeeStructure[]
   homeworks     Homework[]
+  assignments   Assignment[]
 
   @@unique([classId, name])
   @@index([classId])
@@ -384,6 +388,7 @@ model Student {
   libraryIssues    LibraryIssue[]
   transportAssignments StudentTransport[]
   homeworkSubmissions HomeworkSubmission[]
+  assignmentSubmissions AssignmentSubmission[]
 
   @@unique([schoolId, admissionNumber])
   @@index([schoolId])
@@ -460,6 +465,7 @@ model Teacher {
   branch      Branch?    @relation(fields: [branchId], references: [id])
   timetables  Timetable[]
   homeworks   Homework[]
+  assignments Assignment[]
 
   @@unique([schoolId, employeeId])
   @@index([schoolId])
@@ -1030,22 +1036,126 @@ enum HomeworkSubmissionStatus {
 }
 
 model Assignment {
-  id          String   @id @default(uuid()) @db.Uuid
-  title       String
-  description String?
-  classId     String   @db.Uuid
-  subjectId   String?  @db.Uuid
-  totalMarks  Int?
-  dueDate     DateTime
-  schoolId    String   @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                  String           @id @default(uuid()) @db.Uuid
+  title               String
+  description         String?
+  instructions        String?
+  classId             String           @db.Uuid
+  sectionId           String?          @db.Uuid
+  subjectId           String?          @db.Uuid
+  teacherId           String?          @db.Uuid
+  academicYearId      String?          @db.Uuid
+  type                AssignmentType   @default(INDIVIDUAL)
+  assignedDate        DateTime         @default(now())
+  dueDate             DateTime
+  lateSubmissionDate  DateTime?
+  allowLateSubmission Boolean          @default(false)
+  totalMarks          Int?
+  passingMarks        Int?
+  gradingCriteria     String?
+  referenceMaterials  Json?            @default("[]")
+  attachments         Json?            @default("[]")
+  status              AssignmentStatus @default(PUBLISHED)
+  createdBy           String?          @db.Uuid
+  schoolId            String           @db.Uuid
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
-  class       SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
-  subject     Subject?    @relation(fields: [subjectId], references: [id])
+  class        SchoolClass   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section      Section?      @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  subject      Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacher      Teacher?      @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  submissions  AssignmentSubmission[]
 
   @@index([schoolId])
   @@index([classId])
+  @@index([sectionId])
+  @@index([subjectId])
+  @@index([teacherId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([schoolId, classId, sectionId])
+}
+
+enum AssignmentType {
+  INDIVIDUAL
+  GROUP
+  PROJECT
+  PRACTICAL
+  RESEARCH
+}
+
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+model AssignmentSubmission {
+  id              String                     @id @default(uuid()) @db.Uuid
+  assignmentId    String                     @db.Uuid
+  studentId       String                     @db.Uuid
+  schoolId        String                     @db.Uuid
+  status          AssignmentSubmissionStatus @default(NOT_SUBMITTED)
+  submissionText  String?
+  attachments     Json?                      @default("[]")
+  submittedAt     DateTime?
+  isLate          Boolean                    @default(false)
+  marksObtained   Int?
+  feedback        String?
+  reviewedBy      String?                    @db.Uuid
+  reviewedAt      DateTime?
+  gradesPublished Boolean                    @default(false)
+  version         Int                        @default(1)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  assignment Assignment                    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    Student                       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  school     School                        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  history    AssignmentSubmissionHistory[]
+
+  @@unique([assignmentId, studentId])
+  @@index([schoolId])
+  @@index([assignmentId])
+  @@index([studentId])
+  @@index([status])
+}
+
+enum AssignmentSubmissionStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  UNDER_REVIEW
+  GRADED
+  LATE_SUBMITTED
+  RETURNED_FOR_REVISION
+  RESUBMITTED
+}
+
+model AssignmentSubmissionHistory {
+  id             String                     @id @default(uuid()) @db.Uuid
+  submissionId   String                     @db.Uuid
+  assignmentId   String                     @db.Uuid
+  studentId      String                     @db.Uuid
+  schoolId       String                     @db.Uuid
+  version        Int
+  status         AssignmentSubmissionStatus
+  submissionText String?
+  attachments    Json?
+  marksObtained  Int?
+  feedback       String?
+  createdBy      String?                    @db.Uuid
+  createdAt      DateTime                   @default(now())
+
+  submission AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([assignmentId])
+  @@index([studentId])
+  @@index([schoolId])
 }
 
 // ============================================

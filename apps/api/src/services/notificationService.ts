@@ -224,6 +224,70 @@ export const notificationService = {
     return { checked: dueSoon.length, notified, details, pushDelivered: false };
   },
 
+  /**
+   * Assignment deadline reminders. Same honesty contract as homework
+   * reminders: in-app notifications are created (returned counts are real
+   * DB rows); email/SMS/WhatsApp/push are NOT sent unless wired — the
+   * response reports each channel as delivered:false. A scheduler or cron
+   * should POST /academics/assignments/reminders (or enqueue the
+   * `assignmentReminder` BullMQ queue and drain it into this method).
+   */
+  async assignmentDueReminders(schoolId: string | undefined, hoursAhead = 48, isSuperAdmin = false) {
+    if (!schoolId && !isSuperAdmin) throw new TenantError("School context required");
+    const now = new Date();
+    const horizon = new Date(now.getTime() + hoursAhead * 3600_000);
+    const dueSoon = await prisma.assignment.findMany({
+      where: {
+        ...(schoolId ? { schoolId } : {}),
+        status: "PUBLISHED",
+        dueDate: { gte: now, lte: horizon },
+      },
+      select: { id: true, title: true, classId: true, sectionId: true, schoolId: true, dueDate: true },
+      take: 200,
+    });
+    let notified = 0;
+    const details: Array<{ assignmentId: string; notified: number }> = [];
+    for (const a of dueSoon) {
+      const scope: any = { schoolId: a.schoolId, classId: a.classId, status: "ACTIVE" };
+      if ((a as any).sectionId) scope.sectionId = (a as any).sectionId;
+      const [students, submitted, recent] = await Promise.all([
+        prisma.student.findMany({ where: scope, select: { id: true, userId: true } }),
+        prisma.assignmentSubmission.findMany({
+          where: { assignmentId: a.id, submittedAt: { not: null } },
+          select: { studentId: true },
+        }),
+        prisma.notification.findMany({
+          where: { link: `assignment:${a.id}:reminder`, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } },
+          select: { userId: true },
+        }),
+      ]);
+      const done = new Set(submitted.map((s) => s.studentId));
+      const reminded = new Set(recent.map((r) => r.userId));
+      const link = `assignment:${a.id}:reminder`;
+      const rows = students
+        .filter((s) => s.userId && !done.has(s.id) && !reminded.has(s.userId as string))
+        .map((s) => ({
+          userId: s.userId as string,
+          title: `Reminder: "${a.title}" due ${a.dueDate.toISOString().slice(0, 10)}`,
+          message: `Assignment "${a.title}" is due on ${a.dueDate.toISOString().slice(0, 10)}. Submit it before the deadline.`,
+          type: "IN_APP" as const,
+          link,
+          schoolId: a.schoolId,
+        }));
+      if (rows.length) {
+        const res = await prisma.notification.createMany({ data: rows });
+        notified += res.count;
+        details.push({ assignmentId: a.id, notified: res.count });
+      }
+    }
+    return {
+      checked: dueSoon.length,
+      notified,
+      details,
+      channels: { inApp: notified > 0, email: false, sms: false, whatsapp: false, push: false },
+    };
+  },
+
   async listDeliveries(invoiceId: string, schoolId: string | undefined, isSuperAdmin = false) {
     if (!schoolId && !isSuperAdmin) throw new TenantError("School context required");
     const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { schoolId: true } });

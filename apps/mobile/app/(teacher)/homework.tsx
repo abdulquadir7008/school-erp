@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { Link } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { mobileApi } from "../../src/api/mobile";
 import { useTeacherClasses, useTeacherCompletions, useTeacherHomework } from "../../src/api/hooks";
@@ -159,6 +160,18 @@ export default function TeacherHomework() {
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={["top"]}>
       <Screen refreshing={false} onRefresh={() => { classes.refetch(); refreshTracked(); }}>
+        <Link href="/(teacher)/assignments" asChild>
+          <Pressable className="mb-3 flex-row items-center gap-3 rounded-3xl bg-tealbrand-600 p-4 active:opacity-85">
+            <View className="h-11 w-11 items-center justify-center rounded-2xl bg-white/20">
+              <Ionicons name="document-text" size={20} color="#FFFFFF" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-[14px] font-extrabold text-white">Assignments</Text>
+              <Text className="text-[12px] text-teal-50">Create, track submissions & grade</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+          </Pressable>
+        </Link>
         <SectionHeader title="Publish work" subtitle="Homework or graded assignment" />
         {!targets.length ? (
           <EmptyView title="No classes assigned" hint="Your timetable has no class/subject entries yet." icon="create-outline" />

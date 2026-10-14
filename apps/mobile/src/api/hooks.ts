@@ -58,6 +58,31 @@ export function useHomework() {
   return useQuery({ queryKey: qk.homework, queryFn: mobileApi.homework, staleTime: STALE });
 }
 
+export function useStudentAssignments() {
+  return useQuery({
+    queryKey: ["mobile", "student-assignments"],
+    queryFn: mobileApi.studentAssignments,
+    staleTime: STALE,
+  });
+}
+
+export function useTeacherAssignments() {
+  return useQuery({
+    queryKey: ["mobile", "teacher-assignments"],
+    queryFn: mobileApi.teacherAssignments,
+    staleTime: STALE,
+  });
+}
+
+export function useTeacherSubmissions(assignmentId?: string, status?: string, search?: string) {
+  return useQuery({
+    queryKey: ["mobile", "teacher-submissions", assignmentId, status, search],
+    queryFn: () => mobileApi.teacherSubmissions(assignmentId as string, { status, search }),
+    staleTime: STALE,
+    enabled: !!assignmentId,
+  });
+}
+
 export function useExams() {
   return useQuery({ queryKey: qk.exams, queryFn: mobileApi.exams, staleTime: STALE });
 }

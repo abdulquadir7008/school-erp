@@ -6,7 +6,7 @@ import {
   TenantError,
 } from "../utils/errors";
 
-async function resolveTeacherId(auth: AuthUser): Promise<string | null> {
+export async function resolveTeacherId(auth: AuthUser): Promise<string | null> {
   if (auth.teacherId) return auth.teacherId;
   const t = await prisma.teacher.findFirst({
     where: { email: auth.email, schoolId: auth.schoolId || undefined },
@@ -15,7 +15,7 @@ async function resolveTeacherId(auth: AuthUser): Promise<string | null> {
   return t?.id ?? null;
 }
 
-async function resolveStudentId(auth: AuthUser): Promise<string | null> {
+export async function resolveStudentId(auth: AuthUser): Promise<string | null> {
   if (auth.studentId) {
     const s = await prisma.student.findUnique({
       where: { id: auth.studentId },
@@ -31,7 +31,7 @@ async function resolveStudentId(auth: AuthUser): Promise<string | null> {
 }
 
 /** Teachers may manage homework for classes they teach (timetable) or own as class teacher. */
-async function assertTeacherAssigned(auth: AuthUser, classId: string, subjectId?: string | null) {
+export async function assertTeacherAssigned(auth: AuthUser, classId: string, subjectId?: string | null) {
   const teacherId = await resolveTeacherId(auth);
   if (!teacherId) throw new AuthorizationError("No linked teacher record");
   const cls = await prisma.schoolClass.findUnique({
@@ -49,13 +49,13 @@ async function assertTeacherAssigned(auth: AuthUser, classId: string, subjectId?
   return teacherId;
 }
 
-function scope(auth: AuthUser, schoolId?: string) {
+export function scope(auth: AuthUser, schoolId?: string) {
   const ctx = auth.isSuperAdmin ? schoolId : auth.schoolId || undefined;
   if (!ctx && !auth.isSuperAdmin) throw new TenantError("School context required");
   return ctx;
 }
 
-async function assertSameSchool(
+export async function assertSameSchool(
   schoolId: string | undefined,
   entitySchoolId: string,
   entityName: string
