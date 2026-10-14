@@ -109,13 +109,16 @@ export const examController = {
   async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const schoolId = getContextSchoolId(req);
-      const search = typeof req.query.search === "string" ? req.query.search : undefined;
-      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const str = (v: unknown) => (typeof v === "string" ? v : undefined);
       const result = await examService.list({
         page: Number(req.query.page) || 1,
         limit: Number(req.query.limit) || 25,
-        search,
-        status,
+        search: str(req.query.search),
+        status: str(req.query.status),
+        academicYearId: str(req.query.academicYearId),
+        classId: str(req.query.classId),
+        sectionId: str(req.query.sectionId),
+        type: str(req.query.type),
         schoolId,
         isSuperAdmin: req.user?.isSuperAdmin || false,
         auth: req.user,
@@ -179,6 +182,130 @@ export const examController = {
         data: result,
         message: "Marks saved for verification",
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async addSubject(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await examService.addExamSubject(getParam(req.params.id), req.user!, req.body);
+      res.status(201).json({ success: true, data, message: "Timetable entry added" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateSubject(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await examService.updateExamSubject(
+        getParam(req.params.id),
+        getParam(req.params.subjectId),
+        req.user!,
+        req.body ?? {}
+      );
+      res.json({ success: true, data, message: "Timetable entry updated" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteSubject(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await examService.deleteExamSubject(
+        getParam(req.params.id),
+        getParam(req.params.subjectId),
+        req.user!
+      );
+      res.json({ success: true, data, message: "Timetable entry removed" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async submitMarks(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await examService.submitMarks(
+        getParam(req.params.id),
+        req.user!,
+        req.body.examSubjectId,
+        Array.isArray(req.body?.studentIds) ? req.body.studentIds : undefined
+      );
+      res.json({ success: true, data, message: "Marks submitted for review" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async reviewMarks(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await examService.reviewMarks(
+        getParam(req.params.id),
+        req.user!,
+        req.body.examSubjectId,
+        { approved: req.body.approved, rejected: req.body.rejected }
+      );
+      res.json({ success: true, data, message: "Marks reviewed" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async roster(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const subjectId = typeof req.query.examSubjectId === "string" ? req.query.examSubjectId : "";
+      const data = await examService.getMarksRoster(getParam(req.params.id), subjectId, req.user!);
+      res.json({ success: true, data, message: "Marks roster retrieved" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async myExams(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await examService.getTeacherExams(req.user!);
+      res.json({ success: true, data, message: "Assigned exams retrieved" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async reportCard(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const studentId = typeof req.query.studentId === "string" ? req.query.studentId : "";
+      const format = req.query.format === "pdf" ? "pdf" : "json";
+      const report = await examService.getReportCard(getParam(req.params.id), studentId, req.user!);
+      if (format === "pdf") {
+        const { pdfService } = await import("../services/pdfService");
+        const school = await examService.getReportSchool(report);
+        const buffer = await pdfService.generateReportCardPdf({ ...report, school } as any);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="report-card-${report.student.admissionNumber}.pdf"`
+        );
+        res.send(buffer);
+        return;
+      }
+      res.json({ success: true, data: report, message: "Report card retrieved" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async reminders(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { notificationService } = await import("../services/notificationService");
+      const schoolId =
+        (typeof req.body?.schoolId === "string" && req.body.schoolId) ||
+        req.user!.schoolId ||
+        undefined;
+      const data = await notificationService.examReminders(
+        schoolId,
+        typeof req.body?.hoursAhead === "number" ? req.body.hoursAhead : 168,
+        !!req.user!.isSuperAdmin
+      );
+      res.json({ success: true, data, message: "Exam reminders queued" });
     } catch (error) {
       next(error);
     }

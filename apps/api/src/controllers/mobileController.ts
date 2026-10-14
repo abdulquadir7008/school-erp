@@ -160,18 +160,76 @@ export const mobileController = {
 
   async exams(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      const studentId = typeof req.query.studentId === "string" ? req.query.studentId : undefined;
       const data =
         req.user!.roleName === "TEACHER"
           ? await mobileService.teacherExams(req.user!)
-          : await mobileService.studentExams(req.user!);
+          : await mobileService.studentExams(req.user!, studentId);
       res.json({ success: true, data, message: "Examinations retrieved" });
     } catch (e) { next(e); }
   },
 
   async results(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const data = await mobileService.studentResults(req.user!);
+      const studentId = typeof req.query.studentId === "string" ? req.query.studentId : undefined;
+      const data = await mobileService.studentResults(req.user!, studentId);
       res.json({ success: true, data, message: "Published results retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async reportCard(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const studentId = typeof req.query.studentId === "string" ? req.query.studentId : undefined;
+      const format = req.query.format === "pdf" ? "pdf" : "json";
+      const { examService } = await import("../services/examService");
+      const { resolveStudentId } = await import("../services/academicsService");
+      const targetStudentId =
+        req.user!.roleName === "STUDENT"
+          ? await resolveStudentId(req.user!)
+          : studentId;
+      if (!targetStudentId) {
+        res.status(400).json({ success: false, message: "studentId is required", code: "VALIDATION_ERROR" });
+        return;
+      }
+      const report = await examService.getReportCard(id, targetStudentId, req.user!);
+      if (format === "pdf") {
+        const { pdfService } = await import("../services/pdfService");
+        const school = await examService.getReportSchool(report);
+        const buffer = await pdfService.generateReportCardPdf({ ...report, school } as any);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="report-card-${report.student.admissionNumber}.pdf"`
+        );
+        res.send(buffer);
+        return;
+      }
+      res.json({ success: true, data: report, message: "Report card retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async teacherMarksRoster(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const examSubjectId = typeof req.query.examSubjectId === "string" ? req.query.examSubjectId : "";
+      const { examService } = await import("../services/examService");
+      const data = await examService.getMarksRoster(id, examSubjectId, req.user!);
+      res.json({ success: true, data, message: "Marks roster retrieved" });
+    } catch (e) { next(e); }
+  },
+
+  async teacherSubmitMarks(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : "";
+      const { examService } = await import("../services/examService");
+      const data = await examService.submitMarks(
+        id,
+        req.user!,
+        req.body.examSubjectId,
+        Array.isArray(req.body?.studentIds) ? req.body.studentIds : undefined
+      );
+      res.json({ success: true, data, message: "Marks submitted for review" });
     } catch (e) { next(e); }
   },
 

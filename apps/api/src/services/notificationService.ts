@@ -288,6 +288,65 @@ export const notificationService = {
     };
   },
 
+  /**
+   * Exam approaching reminders for SCHEDULED exams starting within the
+   * window. In-app rows are real; other channels report delivered:false
+   * until wired. Drain the `examReminder` queue (or cron) into this.
+   */
+  async examReminders(schoolId: string | undefined, hoursAhead = 168, isSuperAdmin = false) {
+    if (!schoolId && !isSuperAdmin) throw new TenantError("School context required");
+    const now = new Date();
+    const horizon = new Date(now.getTime() + hoursAhead * 3600_000);
+    const upcoming = await prisma.exam.findMany({
+      where: {
+        ...(schoolId ? { schoolId } : {}),
+        status: "SCHEDULED",
+        startDate: { gte: now, lte: horizon },
+      },
+      select: { id: true, name: true, type: true, schoolId: true, startDate: true, classes: { select: { classId: true, sectionId: true } } },
+      take: 100,
+    });
+    let notified = 0;
+    const details: Array<{ examId: string; notified: number }> = [];
+    for (const e of upcoming) {
+      const or = e.classes.map((c: any) =>
+        c.sectionId ? { classId: c.classId, sectionId: c.sectionId } : { classId: c.classId }
+      );
+      const where: any = { schoolId: e.schoolId, status: "ACTIVE" };
+      if (or.length) where.OR = or;
+      const [students, recent] = await Promise.all([
+        prisma.student.findMany({ where, select: { id: true, userId: true } }),
+        prisma.notification.findMany({
+          where: { link: `exam:${e.id}:reminder`, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } },
+          select: { userId: true },
+        }),
+      ]);
+      const reminded = new Set(recent.map((r) => r.userId));
+      const link = `exam:${e.id}:reminder`;
+      const rows = students
+        .filter((s) => s.userId && !reminded.has(s.userId as string))
+        .map((s) => ({
+          userId: s.userId as string,
+          title: `Upcoming exam: ${e.name}`,
+          message: `${e.name} (${e.type}) starts ${e.startDate.toISOString().slice(0, 10)}. Check your exam timetable.`,
+          type: "IN_APP" as const,
+          link,
+          schoolId: e.schoolId,
+        }));
+      if (rows.length) {
+        const res = await prisma.notification.createMany({ data: rows });
+        notified += res.count;
+        details.push({ examId: e.id, notified: res.count });
+      }
+    }
+    return {
+      checked: upcoming.length,
+      notified,
+      details,
+      channels: { inApp: notified > 0, email: false, sms: false, whatsapp: false, push: false },
+    };
+  },
+
   async listDeliveries(invoiceId: string, schoolId: string | undefined, isSuperAdmin = false) {
     if (!schoolId && !isSuperAdmin) throw new TenantError("School context required");
     const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { schoolId: true } });

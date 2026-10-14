@@ -348,19 +348,84 @@ export const mobileService = {
     );
   },
 
-  async studentExams(auth: AuthUser) {
+  async studentExams(auth: AuthUser, studentId?: string) {
+    if (auth.roleName === "PARENT") {
+      const { examService } = await import("./examService");
+      const children = await examService.getLinkedChildren(auth);
+      const target = studentId
+        ? children.find((c) => c.id === studentId)
+        : children[0];
+      if (!target) throw new NotFoundError("Linked student record");
+      // Reuse the scoped student feed under the child's identity.
+      return this.studentExamsForStudent(target as any);
+    }
     requireRole(auth, ["STUDENT"]);
     const s = await resolveStudent(auth);
-    return prisma.exam.findMany({
-      where: { schoolId: s.schoolId, status: { in: ["SCHEDULED", "IN_PROGRESS", "PUBLISHED"] } },
+    return this.studentExamsForStudent(s as any);
+  },
+
+  async studentExamsForStudent(s: { id: string; classId: string; sectionId: string | null; schoolId: string }) {
+    const { getSchoolTimezone, formatInTimezone } = await import("./assignmentService");
+    const tz = await getSchoolTimezone(s.schoolId);
+    const exams = await prisma.exam.findMany({
+      where: {
+        schoolId: s.schoolId,
+        status: { in: ["SCHEDULED", "IN_PROGRESS", "PUBLISHED"] },
+        OR: [
+          { classes: { none: {} } },
+          {
+            classes: {
+              some: {
+                classId: s.classId,
+                OR: [{ sectionId: null }, ...(s.sectionId ? [{ sectionId: s.sectionId }] : [])],
+              },
+            },
+          },
+        ],
+      },
       orderBy: { startDate: "asc" }, take: 50,
-      include: { subjects: { include: { subject: { select: { id: true, name: true, code: true } } } } },
+      include: {
+        subjects: {
+          include: {
+            subject: { select: { id: true, name: true, code: true } },
+            invigilator: { select: { id: true, firstName: true, lastName: true } },
+          },
+          orderBy: { date: "asc" },
+        },
+      },
+    });
+    const now = new Date();
+    return exams.map((e) => {
+      const start = new Date(e.startDate).getTime();
+      const end = new Date(e.endDate).getTime();
+      const bucket =
+        e.status === "PUBLISHED" ? "RESULTS_PUBLISHED"
+        : end < now.getTime() ? "COMPLETED"
+        : start <= now.getTime() && now.getTime() <= end ? "TODAY"
+        : start > now.getTime() ? "UPCOMING" : "COMPLETED";
+      return {
+        ...e,
+        bucket,
+        timezone: tz,
+        subjectCount: e.subjects.length,
+        startLocal: formatInTimezone(e.startDate, tz),
+        endLocal: formatInTimezone(e.endDate, tz),
+      };
     });
   },
 
-  async studentResults(auth: AuthUser) {
-    requireRole(auth, ["STUDENT"]);
-    const s = await resolveStudent(auth);
+  async studentResults(auth: AuthUser, studentId?: string) {
+    let s: { id: string; schoolId: string };
+    if (auth.roleName === "PARENT") {
+      const { examService } = await import("./examService");
+      const children = await examService.getLinkedChildren(auth);
+      const target = studentId ? children.find((c) => c.id === studentId) : children[0];
+      if (!target) throw new NotFoundError("Linked student record");
+      s = target as any;
+    } else {
+      requireRole(auth, ["STUDENT"]);
+      s = await resolveStudent(auth);
+    }
     // ONLY published results — enforced here, never trust client
     const marks = await prisma.mark.findMany({
       where: { studentId: s.id, examSubject: { exam: { schoolId: s.schoolId, status: "PUBLISHED" } } },
@@ -562,13 +627,8 @@ export const mobileService = {
 
   async teacherExams(auth: AuthUser) {
     requireRole(auth, ["TEACHER"]);
-    const t = await resolveTeacher(auth);
-    return prisma.exam.findMany({
-      where: { schoolId: t.schoolId, status: { in: ["DRAFT", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "PUBLISHED"] } },
-      orderBy: { startDate: "desc" },
-      take: 50,
-      include: { subjects: { include: { subject: { select: { id: true, name: true, code: true } } } } },
-    });
+    const { examService } = await import("./examService");
+    return examService.getTeacherExams(auth);
   },
 
   async teacherTimetable(auth: AuthUser) {

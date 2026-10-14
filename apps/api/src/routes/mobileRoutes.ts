@@ -46,6 +46,7 @@ router.post(
 router.get("/assignments/attachments/:docId", mobileController.downloadAssignmentFile);
 router.get("/exams", mobileController.exams);
 router.get("/results", mobileController.results);
+router.get("/report-card/:id", mobileController.reportCard);
 router.get("/fees", mobileController.fees);
 router.get("/library", mobileController.library);
 router.get("/transport", mobileController.transport);
@@ -71,6 +72,8 @@ router.get(
   validate(assignmentIdParamSchema),
   mobileController.teacherSubmissions
 );
+router.get("/teacher/exams/:id/roster", mobileController.teacherMarksRoster);
+router.post("/teacher/exams/:id/marks/submit", mobileController.teacherSubmitMarks);
 router.patch(
   "/teacher/assignments/:id/grade",
   validate(gradeSubmissionsSchema),

@@ -276,6 +276,7 @@ model SchoolClass {
   timetables     Timetable[]
   assignments    Assignment[]
   homeworks      Homework[]
+  examClasses    ExamClass[]
 
   @@unique([schoolId, academicYearId, code])
   @@index([schoolId])
@@ -295,6 +296,7 @@ model Section {
   feeStructures FeeStructure[]
   homeworks     Homework[]
   assignments   Assignment[]
+  examClasses   ExamClass[]
 
   @@unique([classId, name])
   @@index([classId])
@@ -466,6 +468,7 @@ model Teacher {
   timetables  Timetable[]
   homeworks   Homework[]
   assignments Assignment[]
+  invigilations ExamSubject[]
 
   @@unique([schoolId, employeeId])
   @@index([schoolId])
@@ -761,16 +764,22 @@ model Exam {
   academicYearId String?     @db.Uuid
   startDate      DateTime
   endDate        DateTime
+  durationMin    Int?
+  instructions   String?
   status         ExamStatus  @default(DRAFT)
+  gradingPolicy  Json?
+  publishedAt    DateTime?
   createdBy      String?     @db.Uuid
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   school         School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   subjects       ExamSubject[]
+  classes        ExamClass[]
 
   @@index([schoolId])
   @@index([status])
+  @@index([academicYearId])
 }
 
 enum ExamStatus {
@@ -779,40 +788,103 @@ enum ExamStatus {
   IN_PROGRESS
   COMPLETED
   PUBLISHED
+  ARCHIVED
+}
+
+model ExamClass {
+  id        String   @id @default(uuid()) @db.Uuid
+  examId    String   @db.Uuid
+  classId   String   @db.Uuid
+  sectionId String?  @db.Uuid
+  schoolId  String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  exam      Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  class     SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section   Section?    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, classId, sectionId])
+  @@index([examId])
+  @@index([classId])
+  @@index([schoolId])
 }
 
 model ExamSubject {
-  id        String   @id @default(uuid()) @db.Uuid
-  examId    String   @db.Uuid
-  subjectId String   @db.Uuid
-  maxMarks  Int
-  passMarks Int
-  date      DateTime?
-  startTime String?
-  endTime   String?
+  id            String   @id @default(uuid()) @db.Uuid
+  examId        String   @db.Uuid
+  subjectId     String   @db.Uuid
+  maxMarks      Int
+  passMarks     Int
+  date          DateTime?
+  startTime     String?
+  endTime       String?
+  durationMin   Int?
+  room          String?
+  invigilatorId String?  @db.Uuid
+  instructions  String?
 
-  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
-  subject   Subject  @relation(fields: [subjectId], references: [id])
-  marks     Mark[]
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject       Subject  @relation(fields: [subjectId], references: [id])
+  invigilator   Teacher? @relation(fields: [invigilatorId], references: [id], onDelete: SetNull)
+  marks         Mark[]
 
   @@unique([examId, subjectId])
+  @@index([examId])
 }
 
 model Mark {
-  id           String   @id @default(uuid()) @db.Uuid
+  id            String     @id @default(uuid()) @db.Uuid
   examSubjectId String @db.Uuid
-  studentId    String   @db.Uuid
+  studentId     String   @db.Uuid
   marksObtained Int?
-  remarks      String?
-  verifiedBy   String?  @db.Uuid
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  remarks       String?
+  verifiedBy    String?  @db.Uuid
+  status        MarkStatus @default(DRAFT)
+  isAbsent      Boolean    @default(false)
+  isExempt      Boolean    @default(false)
+  reviewNote    String?
+  approvedBy    String?    @db.Uuid
+  approvedAt    DateTime?
+  submittedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   examSubject  ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
   student      Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  history      MarkHistory[]
 
   @@unique([examSubjectId, studentId])
   @@index([studentId])
+  @@index([status])
+}
+
+enum MarkStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model MarkHistory {
+  id            String     @id @default(uuid()) @db.Uuid
+  markId        String     @db.Uuid
+  examSubjectId String     @db.Uuid
+  studentId     String     @db.Uuid
+  schoolId      String     @db.Uuid
+  oldMarks      Int?
+  newMarks      Int?
+  oldStatus     MarkStatus?
+  newStatus     MarkStatus
+  reason        String?
+  changedBy     String?    @db.Uuid
+  createdAt     DateTime   @default(now())
+
+  mark          Mark       @relation(fields: [markId], references: [id], onDelete: Cascade)
+
+  @@index([markId])
+  @@index([examSubjectId])
+  @@index([studentId])
+  @@index([schoolId])
 }
 
 // ============================================

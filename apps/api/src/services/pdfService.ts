@@ -612,6 +612,103 @@ export class PdfService {
     doc.end();
     return this.toBuffer(doc);
   }
+
+  /** Student report card for one exam: subject table + totals + result. */
+  async generateReportCardPdf(report: {
+    school: { name: string; email?: string; phone?: string; address?: string; city?: string; state?: string; website?: string; logo?: string };
+    exam: { name: string; type: string; startDate: Date | string; endDate: Date | string; instructions?: string | null };
+    student: { firstName: string; lastName: string; admissionNumber: string; rollNumber?: number | null; class?: { name: string } | null; section?: { name: string } | null };
+    subjects: { name: string; obtained: number | null; maxMarks: number; passMarks: number; grade: string | null; isAbsent: boolean; isExempt: boolean; remarks?: string | null }[];
+    totalObtained: number;
+    totalMax: number;
+    percentage: number;
+    grade: string;
+    passed: boolean;
+    rank?: number | null;
+    attendancePercentage?: number | null;
+  }): Promise<Buffer> {
+    const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+
+    this.drawHeader(doc, report.school);
+    doc.y = 132;
+
+    doc.font("Helvetica-Bold").fontSize(14).fillColor(GREEN).text("REPORT CARD", 60, doc.y);
+    doc
+      .font("Helvetica")
+      .fontSize(9)
+      .fillColor(SLATE_MUTED)
+      .text(`${report.exam.name} (${report.exam.type})  •  ${DATE(report.exam.startDate)} – ${DATE(report.exam.endDate)}`, 60, doc.y + 20, { width: 475 });
+
+    let y = doc.y + 42;
+    doc.font("Helvetica").fontSize(9.5);
+    const info: [string, string][] = [
+      ["Student", `${report.student.firstName} ${report.student.lastName}`],
+      ["Admission No.", report.student.admissionNumber],
+      ["Class", `${report.student.class?.name || "—"}${report.student.section ? ` - ${report.student.section.name}` : ""}`],
+      ["Roll No.", report.student.rollNumber != null ? String(report.student.rollNumber) : "—"],
+    ];
+    for (const [label, value] of info) {
+      doc.fillColor(SLATE_MUTED).text(label, 60, y, { width: 120 });
+      doc.fillColor(SLATE).font("Helvetica-Bold").text(value, 190, y, { width: 345 });
+      doc.font("Helvetica").fontSize(9.5);
+      y += 18;
+    }
+    y += 6;
+
+    const headers = ["Subject", "Max", "Pass", "Obtained", "%", "Grade", "Result"];
+    const widths = [170, 50, 50, 65, 50, 50, 40];
+    const rows = report.subjects.map((s) => [
+      s.isExempt ? `${s.name} (exempt)` : s.name,
+      String(s.maxMarks),
+      String(s.passMarks),
+      s.isAbsent ? "ABSENT" : s.obtained == null ? "—" : String(s.obtained),
+      s.isExempt || s.maxMarks === 0 ? "—" : `${Math.round(((s.obtained ?? 0) / s.maxMarks) * 100)}`,
+      s.grade || "—",
+      s.isExempt ? "—" : (s.obtained ?? 0) >= s.passMarks && !s.isAbsent ? "Pass" : "Fail",
+    ]);
+    y = this.drawTable(doc, {
+      headers, widths, rows, startY: y, rowHeight: 24,
+      align: ["left", "right", "right", "right", "right", "left", "left"],
+    });
+    y += 16;
+
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(SLATE);
+    const summary: [string, string][] = [
+      ["Total", `${report.totalObtained} / ${report.totalMax}`],
+      ["Percentage", `${report.percentage}%`],
+      ["Overall Grade", report.grade],
+      ["Result", report.passed ? "PASS" : "FAIL"],
+    ];
+    if (report.rank != null) summary.push(["Rank", String(report.rank)]);
+    if (report.attendancePercentage != null) summary.push(["Exam-period Attendance", `${report.attendancePercentage}%`]);
+    doc.font("Helvetica").fontSize(9.5);
+    for (const [label, value] of summary) {
+      doc.fillColor(SLATE_MUTED).text(label, 60, y, { width: 200 });
+      doc.fillColor(report.passed ? GREEN : "#b91c1c").font("Helvetica-Bold").text(value, 270, y, { width: 265 });
+      doc.font("Helvetica").fontSize(9.5);
+      y += 18;
+    }
+
+    const sigY = Math.max(y + 30, doc.page.height - 140);
+    doc
+      .fillColor(SLATE_MUTED)
+      .font("Helvetica")
+      .fontSize(9)
+      .text("Class Teacher", 60, sigY, { width: 160 })
+      .text("Principal", 390, sigY, { width: 160 });
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor(GREEN)
+      .text(`This is a computer generated report card from ${report.school.name}. Generated on ${DATE(new Date())}.`, 60, sigY + 20, {
+        width: 475,
+        align: "center",
+      });
+
+    this.drawFooter(doc, report.school.name);
+    doc.end();
+    return this.toBuffer(doc);
+  }
 }
 
 export const pdfService = new PdfService();

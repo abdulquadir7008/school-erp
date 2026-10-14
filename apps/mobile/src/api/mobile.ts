@@ -117,4 +117,19 @@ export const mobileApi = {
   examResults: (examId: string) => get<any>(`/exams/${examId}/results`),
   enterMarks: (examId: string, payload: unknown) =>
     api.post(`/exams/${examId}/marks`, payload).then((r) => r.data),
+  reportCard: (examId: string) => get<any>(`/mobile/report-card/${examId}`),
+  downloadReportCard: async (examId: string, admissionNumber: string) => {
+    const { accessToken } = await getTokens();
+    const base = (api.defaults.baseURL || "").replace(/\/$/, "");
+    const url = `${base}/mobile/report-card/${examId}?format=pdf`;
+    const target = `${(FileSystem.cacheDirectory || "")}report-card-${admissionNumber}-${examId.slice(0, 8)}.pdf`;
+    const result = await FileSystem.downloadAsync(url, target, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+    return result.uri;
+  },
+  marksRoster: (examId: string, examSubjectId: string) =>
+    get<any>(`/mobile/teacher/exams/${examId}/roster`, { examSubjectId }),
+  submitMarksReview: (examId: string, payload: { examSubjectId: string; studentIds?: string[] }) =>
+    api.post(`/mobile/teacher/exams/${examId}/marks/submit`, payload).then((r) => r.data),
 };

@@ -91,6 +91,24 @@ export function useResults() {
   return useQuery({ queryKey: qk.results, queryFn: mobileApi.results, staleTime: STALE });
 }
 
+export function useReportCard(examId?: string) {
+  return useQuery({
+    queryKey: ["mobile", "report-card", examId],
+    queryFn: () => mobileApi.reportCard(examId as string),
+    staleTime: STALE,
+    enabled: !!examId,
+  });
+}
+
+export function useMarksRoster(examId?: string, examSubjectId?: string) {
+  return useQuery({
+    queryKey: ["mobile", "marks-roster", examId, examSubjectId],
+    queryFn: () => mobileApi.marksRoster(examId as string, examSubjectId as string),
+    staleTime: STALE,
+    enabled: !!examId && !!examSubjectId,
+  });
+}
+
 export function useFees() {
   return useQuery({ queryKey: qk.fees, queryFn: mobileApi.fees, staleTime: STALE });
 }

@@ -205,6 +205,8 @@ export const enterMarksSchema = z.object({
           studentId: z.string().uuid(),
           marksObtained: z.number().int().min(0).nullable(),
           remarks: z.string().max(500).optional(),
+          isAbsent: z.boolean().optional(),
+          isExempt: z.boolean().optional(),
         })
       )
       .min(1)

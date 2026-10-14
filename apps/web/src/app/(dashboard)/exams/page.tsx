@@ -43,6 +43,11 @@ import {
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/components/language-provider";
+import { Select } from "@/components/ui/select";
+import { ExamForm } from "@/components/exams/exam-form";
+import { TimetableManager } from "@/components/exams/timetable-manager";
+import { MarksEntry } from "@/components/exams/marks-entry";
+import { ReportCard } from "@/components/exams/report-card";
 
 interface ExamSubject {
   id: string;
@@ -61,7 +66,7 @@ interface Exam {
   type: string;
   startDate: string;
   endDate: string;
-  status: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "PUBLISHED";
+  status: "DRAFT" | "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "PUBLISHED" | "ARCHIVED";
   subjects: ExamSubject[];
   createdAt: string;
 }
@@ -72,12 +77,15 @@ interface ExamDashboardStats {
   inProgress: number;
   completed: number;
   published: number;
+  pendingMarksEntry?: number;
+  awaitingApproval?: number;
+  unenteredSubjects?: number;
   nextExam: Exam | null;
   upcomingExams: Exam[];
   recentResults: Exam[];
 }
 
-type ExamTab = "all" | "scheduled" | "in_progress" | "completed" | "published";
+type ExamTab = "all" | "scheduled" | "in_progress" | "completed" | "published" | "archived";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -87,14 +95,16 @@ const statusConfig: Record<string, { color: string; bg: string; icon: React.Reac
   IN_PROGRESS: { color: "text-amber-700", bg: "bg-amber-100", icon: <Play className="h-3.5 w-3.5" />, labelKey: "exams.statusOngoing" },
   COMPLETED: { color: "text-purple-700", bg: "bg-purple-100", icon: <CheckCircle2 className="h-3.5 w-3.5" />, labelKey: "exams.statusCompleted" },
   PUBLISHED: { color: "text-green-700", bg: "bg-green-100", icon: <Trophy className="h-3.5 w-3.5" />, labelKey: "exams.statusPublished" },
+  ARCHIVED: { color: "text-slate-500", bg: "bg-slate-200", icon: <X className="h-3.5 w-3.5" />, labelKey: "exams.statusDraft" },
 };
 
-const tabConfig: { key: ExamTab; labelKey: string }[] = [
+const tabConfig: { key: ExamTab; labelKey: string; label?: string }[] = [
   { key: "all", labelKey: "exams.tabAll" },
   { key: "scheduled", labelKey: "exams.tabUpcoming" },
   { key: "in_progress", labelKey: "exams.tabOngoing" },
   { key: "completed", labelKey: "exams.tabCompleted" },
   { key: "published", labelKey: "exams.tabResults" },
+  { key: "archived", labelKey: "exams.tabAll", label: "Archived" },
 ];
 
 function useCountdown(targetDate: string) {
@@ -160,8 +170,18 @@ export default function ExamsPage() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<ExamTab>("all");
   const [showResults, setShowResults] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Exam | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailTab, setDetailTab] = useState<"timetable" | "marks" | "cards">("timetable");
+  const [filterYear, setFilterYear] = useState("");
+  const [filterClass, setFilterClass] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [pickedSchool, setPickedSchool] = useState("");
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canReview = hasPermission("exam.edit");
 
-  const schoolId = isSuperAdmin ? "" : user?.schoolId || "";
+  const schoolId = isSuperAdmin ? pickedSchool : user?.schoolId || "";
 
   const statsQuery = useQuery({
     queryKey: ["exams-dashboard", schoolId],
@@ -174,15 +194,62 @@ export default function ExamsPage() {
   });
 
   const examsQuery = useQuery({
-    queryKey: ["exams-list", search, activeTab, schoolId],
+    queryKey: ["exams-list", "exams", search, activeTab, schoolId, filterYear, filterClass, filterType],
     queryFn: async () => {
       const params: any = { limit: 50 };
       if (search) params.search = search;
       if (activeTab !== "all") params.status = activeTab.toUpperCase();
       if (schoolId) params.schoolId = schoolId;
+      if (filterYear) params.academicYearId = filterYear;
+      if (filterClass) params.classId = filterClass;
+      if (filterType) params.type = filterType;
       const res = await api.get("/exams", { params });
       return res.data.data as Exam[];
     },
+  });
+
+  const schoolsQuery = useQuery({
+    queryKey: ["schools-list"],
+    queryFn: async () => {
+      const res = await api.get("/schools", { params: { limit: 100 } });
+      return res.data.data || [];
+    },
+    enabled: !!isSuperAdmin,
+  });
+
+  const yearsQuery = useQuery({
+    queryKey: ["exam-years"],
+    queryFn: async () => {
+      try {
+        const res = await api.get("/fees/academic-years", schoolId ? { params: { schoolId } } : {});
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const classesQuery = useQuery({
+    queryKey: ["exam-classes", schoolId],
+    queryFn: async () => {
+      if (!schoolId) return [];
+      const res = await api.get(`/schools/${schoolId}/classes`);
+      return res.data.data || [];
+    },
+    enabled: !!schoolId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/exams/${id}`);
+    },
+    onSuccess: () => {
+      toast.success(t("exams.statusUpdated"));
+      queryClient.invalidateQueries({ queryKey: ["exams-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["exams-list"] });
+      if (detailId) setDetailId(null);
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const statusMutation = useMutation({
@@ -217,7 +284,7 @@ export default function ExamsPage() {
   }, [exams, activeTab]);
 
   const tabCounts = useMemo(() => {
-    const counts: Record<ExamTab, number> = { all: exams.length, scheduled: 0, in_progress: 0, completed: 0, published: 0 };
+    const counts: Record<ExamTab, number> = { all: exams.length, scheduled: 0, in_progress: 0, completed: 0, published: 0, archived: 0 };
     exams.forEach((e) => {
       const key = e.status.toLowerCase() as ExamTab;
       if (key in counts) counts[key]++;
@@ -233,15 +300,37 @@ export default function ExamsPage() {
           <p className="text-sm text-slate-500">{t("exams.subtitle")}</p>
         </div>
         {canManage && (
-          <Button>
+          <Button onClick={() => { setEditing(null); setShowForm(!showForm); }}>
             <Plus className="ms-2 h-4 w-4" />
             {t("exams.createExam")}
           </Button>
         )}
       </div>
 
+      {isSuperAdmin && (
+        <Card>
+          <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
+            <label className="text-sm font-medium text-slate-700">School *</label>
+            <select
+              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm sm:max-w-xs"
+              value={pickedSchool}
+              onChange={(e) => setPickedSchool(e.target.value)}
+            >
+              <option value="">Select school…</option>
+              {(schoolsQuery.data || []).map((s: any) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </CardContent>
+        </Card>
+      )}
+
+      {showForm && canManage && schoolId && (
+        <ExamForm schoolId={schoolId} editing={editing} onDone={() => { setShowForm(false); setEditing(null); }} />
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
           title={t("exams.statTotal")}
           value={String(stats?.total ?? 0)}
@@ -266,6 +355,18 @@ export default function ExamsPage() {
           value={String(stats?.published ?? 0)}
           icon={<Trophy className="h-5 w-5" />}
           iconBg="bg-green-50 text-green-600"
+        />
+        <StatCard
+          title="Pending marks entry"
+          value={String(stats?.pendingMarksEntry ?? 0)}
+          icon={<Pencil className="h-5 w-5" />}
+          iconBg="bg-orange-50 text-orange-600"
+        />
+        <StatCard
+          title="Awaiting approval"
+          value={String(stats?.awaitingApproval ?? 0)}
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          iconBg="bg-purple-50 text-purple-600"
         />
       </div>
 
@@ -323,7 +424,7 @@ export default function ExamsPage() {
                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
-            {t(tab.labelKey)}
+            {tab.label || t(tab.labelKey)}
             <span
               className={`ms-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
                 activeTab === tab.key ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
@@ -335,15 +436,33 @@ export default function ExamsPage() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <Input
-          className="ps-9"
-          placeholder={t("exams.searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      {/* Search + filters */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div className="relative flex-1">
+          <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            className="ps-9"
+            placeholder={t("exams.searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Select value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
+            <option value="">All years</option>
+            {(yearsQuery.data || []).map((y: any) => <option key={y.id} value={y.id}>{y.name}</option>)}
+          </Select>
+          <Select value={filterClass} onChange={(e) => setFilterClass(e.target.value)}>
+            <option value="">All classes</option>
+            {(classesQuery.data || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+            <option value="">All types</option>
+            {["Unit Test", "Monthly Test", "Mid-Term", "Final", "Practical", "Mock Exam"].map((ty) => (
+              <option key={ty} value={ty}>{ty}</option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       {/* Exam Cards */}
@@ -366,10 +485,49 @@ export default function ExamsPage() {
               canManage={canManage}
               onStatusChange={(status) => statusMutation.mutate({ id: exam.id, status })}
               onViewResults={() => setShowResults(exam.id)}
+              onManage={() => { setDetailId(exam.id); setDetailTab("timetable"); }}
+              onEdit={() => { setEditing(exam); setShowForm(true); }}
+              onArchive={() => {
+                if (window.confirm(`Archive "${exam.name}"? Students will be notified of cancellation.`)) {
+                  statusMutation.mutate({ id: exam.id, status: "ARCHIVED" });
+                }
+              }}
+              onDelete={() => {
+                if (window.confirm(`Delete "${exam.name}" and all its marks?`)) deleteMutation.mutate(exam.id);
+              }}
               isPending={statusMutation.isPending}
             />
           ))}
         </div>
+      )}
+
+      {/* Exam detail: timetable / marks / report cards */}
+      {detailId && (
+        <Card className="border-blue-200">
+          <CardContent className="p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex gap-2">
+                {(["timetable", "marks", "cards"] as const).map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => setDetailTab(k)}
+                    className={`rounded-md px-3 py-2 text-sm font-medium ${detailTab === k ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                  >
+                    {k === "timetable" ? "Timetable" : k === "marks" ? "Marks entry" : "Report cards"}
+                  </button>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setDetailId(null)}>
+                <X className="h-4 w-4" /> Close
+              </Button>
+            </div>
+            {detailTab === "timetable" && <TimetableManager examId={detailId} canManage={canManage} />}
+            {detailTab === "marks" && (
+              <MarksEntry examId={detailId} canReview={canReview} locked={filteredExams.find((e) => e.id === detailId)?.status === "PUBLISHED"} />
+            )}
+            {detailTab === "cards" && <ReportCard examId={detailId} />}
+          </CardContent>
+        </Card>
       )}
 
       {/* Results Modal */}
@@ -401,12 +559,20 @@ function ExamCard({
   canManage,
   onStatusChange,
   onViewResults,
+  onManage,
+  onEdit,
+  onArchive,
+  onDelete,
   isPending,
 }: {
   exam: Exam;
   canManage: boolean;
   onStatusChange: (status: string) => void;
   onViewResults: () => void;
+  onManage: () => void;
+  onEdit: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
   isPending: boolean;
 }) {
   const { t } = useI18n();
@@ -504,8 +670,8 @@ function ExamCard({
             </Button>
           )}
           {(exam.status === "DRAFT" || exam.status === "SCHEDULED") && canManage && (
-            <Button size="sm" variant="outline">
-              <Pencil className="ms-1 h-3.5 w-3.5" />
+            <Button size="sm" variant="outline" onClick={onEdit}>
+              <Pencil className="ms-1 h-4 w-4" />
               {t("common.edit")}
             </Button>
           )}
@@ -513,6 +679,20 @@ function ExamCard({
             <Button size="sm" variant="outline" onClick={() => onStatusChange("SCHEDULED")}>
               <CalendarClock className="ms-1 h-3.5 w-3.5" />
               {t("exams.scheduleAction")}
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={onManage}>
+            <BookOpen className="ms-1 h-4 w-4" />
+            Manage
+          </Button>
+          {canManage && exam.status !== "ARCHIVED" && exam.status !== "PUBLISHED" && (
+            <Button size="sm" variant="outline" onClick={onArchive}>
+              Archive
+            </Button>
+          )}
+          {canManage && (exam.status === "DRAFT" || exam.status === "ARCHIVED") && (
+            <Button size="sm" variant="ghost" onClick={onDelete}>
+              <X className="h-4 w-4 text-red-500" />
             </Button>
           )}
         </div>
